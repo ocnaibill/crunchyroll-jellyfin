@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="utf-8">
     <title>Crunchyroll Metadata</title>
 </head>
+
 <body>
-    <div id="CrunchyrollConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
+    <div id="CrunchyrollConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+        data-require="emby-input,emby-button,emby-checkbox,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <form id="CrunchyrollConfigForm">
@@ -15,9 +18,10 @@
 
                     <div class="verticalSection">
                         <h3 class="sectionTitle">Language Settings</h3>
-                        
+
                         <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="selectPreferredLanguage">Preferred Language</label>
+                            <label class="inputLabel inputLabelUnfocused" for="selectPreferredLanguage">Preferred
+                                Language</label>
                             <select id="selectPreferredLanguage" is="emby-select" class="emby-select-withcolor">
                                 <option value="pt-BR">Português (Brasil)</option>
                                 <option value="pt-PT">Português (Portugal)</option>
@@ -40,7 +44,8 @@
                         </div>
 
                         <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="selectFallbackLanguage">Fallback Language</label>
+                            <label class="inputLabel inputLabelUnfocused" for="selectFallbackLanguage">Fallback
+                                Language</label>
                             <select id="selectFallbackLanguage" is="emby-select" class="emby-select-withcolor">
                                 <option value="en-US">English (US)</option>
                                 <option value="pt-BR">Português (Brasil)</option>
@@ -61,8 +66,9 @@
                                 <span>Enable Season Mapping</span>
                             </label>
                             <div class="fieldDescription checkboxFieldDescription">
-                                Automatically maps Jellyfin seasons to Crunchyroll seasons. 
-                                This solves the problem where databases like AniDB treat each season as a separate anime.
+                                Automatically maps Jellyfin seasons to Crunchyroll seasons.
+                                This solves the problem where databases like AniDB treat each season as a separate
+                                anime.
                             </div>
                         </div>
 
@@ -73,7 +79,8 @@
                             </label>
                             <div class="fieldDescription checkboxFieldDescription">
                                 Handles cases where Crunchyroll uses continuous episode numbering across seasons.
-                                For example: If your Season 2 starts with Episode 1, but Crunchyroll starts at Episode 25,
+                                For example: If your Season 2 starts with Episode 1, but Crunchyroll starts at Episode
+                                25,
                                 this option will automatically calculate the correct offset.
                             </div>
                         </div>
@@ -83,10 +90,39 @@
                         <h3 class="sectionTitle">Cache Settings</h3>
 
                         <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="txtCacheExpiration">Cache Expiration (hours)</label>
+                            <label class="inputLabel inputLabelUnfocused" for="txtCacheExpiration">Cache Expiration
+                                (hours)</label>
                             <input id="txtCacheExpiration" type="number" is="emby-input" min="1" max="168" />
                             <div class="fieldDescription">
                                 How long metadata should be cached before refreshing (1-168 hours).
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Cloudflare Bypass (FlareSolverr)</h3>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtFlareSolverrUrl">FlareSolverr
+                                URL</label>
+                            <input id="txtFlareSolverrUrl" type="text" is="emby-input"
+                                placeholder="http://localhost:8191" />
+                            <div class="fieldDescription">
+                                <strong>Required for most servers.</strong> Crunchyroll is protected by Cloudflare which
+                                blocks API requests from server IPs.
+                                <br><br>
+                                To fetch metadata, you need to run <a
+                                    href="https://github.com/FlareSolverr/FlareSolverr" target="_blank">FlareSolverr</a>
+                                which handles the Cloudflare challenges.
+                                <br><br>
+                                <strong>Docker example:</strong><br>
+                                <code
+                                    style="display: block; background: var(--overlay-background-color); padding: 10px; margin-top: 5px; border-radius: 4px;">
+                                    docker run -p 8191:8191 flaresolverr/flaresolverr
+                                </code>
+                                <br>
+                                Then enter: <code>http://localhost:8191</code> or
+                                <code>http://&lt;your-docker-host&gt;:8191</code>
                             </div>
                         </div>
                     </div>
@@ -114,6 +150,7 @@
                         document.querySelector('#chkEnableSeasonMapping').checked = config.EnableSeasonMapping !== false;
                         document.querySelector('#chkEnableEpisodeOffsetMapping').checked = config.EnableEpisodeOffsetMapping !== false;
                         document.querySelector('#txtCacheExpiration').value = config.CacheExpirationHours || 24;
+                        document.querySelector('#txtFlareSolverrUrl').value = config.FlareSolverrUrl || '';
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -127,6 +164,7 @@
                         config.EnableSeasonMapping = document.querySelector('#chkEnableSeasonMapping').checked;
                         config.EnableEpisodeOffsetMapping = document.querySelector('#chkEnableEpisodeOffsetMapping').checked;
                         config.CacheExpirationHours = parseInt(document.querySelector('#txtCacheExpiration').value) || 24;
+                        config.FlareSolverrUrl = document.querySelector('#txtFlareSolverrUrl').value.trim();
 
                         ApiClient.updatePluginConfiguration(CrunchyrollConfigPage.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
@@ -138,4 +176,5 @@
         </script>
     </div>
 </body>
+
 </html>

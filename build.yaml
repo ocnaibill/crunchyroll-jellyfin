@@ -1,7 +1,7 @@
 ---
 name: "Crunchyroll Metadata"
 guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-version: "1.1.0.0"
+version: "1.2.0.0"
 targetAbi: "10.9.0.0"
 framework: "net8.0"
 overview: "Fetches anime metadata from Crunchyroll with intelligent season and episode mapping."
@@ -15,6 +15,13 @@ owner: "ocnaibill"
 artifacts:
 - "Jellyfin.Plugin.Crunchyroll.dll"
 changelog: >
+  1.2.0.0 - FlareSolverr support
+    - Add FlareSolverr integration for Cloudflare bypass
+    - Automatic detection of Cloudflare blocks
+    - HTML scraping fallback when API is blocked
+    - New configuration option for FlareSolverr URL
+    - Improved error handling and logging
+
   1.1.0.0 - Authentication support
     - Add anonymous authentication for Crunchyroll API
     - Implement Bearer token for all API requests

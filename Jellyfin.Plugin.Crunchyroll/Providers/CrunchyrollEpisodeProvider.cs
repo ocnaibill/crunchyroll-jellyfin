@@ -44,7 +44,8 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
+        var flareSolverrUrl = config?.FlareSolverrUrl;
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale, flareSolverrUrl);
 
         // Check for existing Crunchyroll episode ID
         string? crunchyrollEpisodeId = info.GetProviderId("CrunchyrollEpisode");
@@ -153,7 +154,8 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
             var locale = config?.PreferredLanguage ?? "pt-BR";
 
             using var httpClient = _httpClientFactory.CreateClient();
-            using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
+            var flareSolverrUrl = config?.FlareSolverrUrl;
+            using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale, flareSolverrUrl);
 
             var episode = await apiClient.GetEpisodeAsync(crunchyrollEpisodeId, cancellationToken).ConfigureAwait(false);
             if (episode != null)

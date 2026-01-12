@@ -17,6 +17,7 @@ public class PluginConfiguration : BasePluginConfiguration
         EnableSeasonMapping = true;
         EnableEpisodeOffsetMapping = true;
         CacheExpirationHours = 24;
+        FlareSolverrUrl = string.Empty;
     }
 
     /// <summary>
@@ -46,4 +47,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the cache expiration time in hours.
     /// </summary>
     public int CacheExpirationHours { get; set; }
+
+    /// <summary>
+    /// Gets or sets the FlareSolverr URL for bypassing Cloudflare protection.
+    /// Example: http://localhost:8191
+    /// Leave empty to try direct API access (may not work from server IPs).
+    /// </summary>
+    public string FlareSolverrUrl { get; set; }
 }
+
