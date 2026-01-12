@@ -6,6 +6,13 @@
     "overview": "Anime metadata provider with smart episode offset calculation",
     "owner": "ocnaibill",
     "category": "Metadata",
-    "versions": []
+    "versions": [
+      {
+        "version": "1.0.0.0",
+        "checksum": "ec642cffe4664d58ea18ce494df0ad93",
+        "timestamp": "2026-01-12T12:06:16Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.0.0/Jellyfin.Plugin.Crunchyroll.zip"
+      }
+    ]
   }
 ]
