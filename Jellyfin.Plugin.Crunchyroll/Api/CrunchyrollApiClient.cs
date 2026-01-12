@@ -94,6 +94,11 @@ public class CrunchyrollApiClient : IDisposable
         try
         {
             // Double-check after acquiring lock
+            if (_useScrapingMode)
+            {
+                return false;
+            }
+
             if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiration)
             {
                 return true;
@@ -181,9 +186,11 @@ public class CrunchyrollApiClient : IDisposable
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 
                 // Check if blocked by Cloudflare (403 Forbidden is the standard indicator)
-                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                // Also handle 429 TooManyRequests which Cloudflare uses for rate limiting bans (Error 1015)
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden || 
+                    response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
-                    _logger.LogWarning("Crunchyroll API authentication returned Forbidden (likely Cloudflare block). Switching to scraping mode.");
+                    _logger.LogWarning("Crunchyroll API authentication returned {StatusCode} (likely Cloudflare block). Switching to scraping mode.", response.StatusCode);
                     _useScrapingMode = true;
                     
                     if (!HasFlareSolverr)
