@@ -42,7 +42,7 @@ public class CrunchyrollSeasonProvider : IRemoteMetadataProvider<Season, SeasonI
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         // Check for existing Crunchyroll season ID
         string? crunchyrollSeasonId = info.GetProviderId("CrunchyrollSeason");
@@ -102,7 +102,7 @@ public class CrunchyrollSeasonProvider : IRemoteMetadataProvider<Season, SeasonI
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         var seasons = await apiClient.GetSeasonsAsync(seriesId, cancellationToken).ConfigureAwait(false);
 

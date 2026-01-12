@@ -15,7 +15,7 @@ public class CrunchyrollApiClient : IDisposable
     private const string ApiBaseUrl = "https://www.crunchyroll.com/content/v2";
     
     private readonly HttpClient _httpClient;
-    private readonly ILogger<CrunchyrollApiClient> _logger;
+    private readonly ILogger _logger;
     private readonly string _locale;
     private bool _disposed;
 
@@ -25,7 +25,7 @@ public class CrunchyrollApiClient : IDisposable
     /// <param name="httpClient">The HTTP client to use.</param>
     /// <param name="logger">The logger instance.</param>
     /// <param name="locale">The locale for API requests.</param>
-    public CrunchyrollApiClient(HttpClient httpClient, ILogger<CrunchyrollApiClient> logger, string locale = "pt-BR")
+    public CrunchyrollApiClient(HttpClient httpClient, ILogger logger, string locale = "pt-BR")
     {
         _httpClient = httpClient;
         _logger = logger;

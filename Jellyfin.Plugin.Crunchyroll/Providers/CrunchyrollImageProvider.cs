@@ -66,7 +66,7 @@ public class CrunchyrollSeriesImageProvider : IRemoteImageProvider, IHasOrder
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         var series = await apiClient.GetSeriesAsync(crunchyrollId, cancellationToken).ConfigureAwait(false);
         if (series?.Images == null)
@@ -188,7 +188,7 @@ public class CrunchyrollEpisodeImageProvider : IRemoteImageProvider, IHasOrder
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         var episode = await apiClient.GetEpisodeAsync(crunchyrollEpisodeId, cancellationToken).ConfigureAwait(false);
         if (episode?.Images?.Thumbnail == null)

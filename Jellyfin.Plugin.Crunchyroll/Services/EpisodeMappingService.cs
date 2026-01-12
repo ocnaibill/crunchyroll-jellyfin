@@ -11,13 +11,13 @@ namespace Jellyfin.Plugin.Crunchyroll.Services;
 /// </summary>
 public class EpisodeMappingService
 {
-    private readonly ILogger<EpisodeMappingService> _logger;
+    private readonly ILogger _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EpisodeMappingService"/> class.
     /// </summary>
     /// <param name="logger">The logger instance.</param>
-    public EpisodeMappingService(ILogger<EpisodeMappingService> logger)
+    public EpisodeMappingService(ILogger logger)
     {
         _logger = logger;
     }

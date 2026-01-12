@@ -44,7 +44,7 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         // Check for existing Crunchyroll episode ID
         string? crunchyrollEpisodeId = info.GetProviderId("CrunchyrollEpisode");
@@ -87,7 +87,7 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
         }
 
         // Use the episode mapping service
-        var mappingService = new EpisodeMappingService(_logger as ILogger<EpisodeMappingService> ?? throw new InvalidOperationException());
+        var mappingService = new EpisodeMappingService(_logger);
         var seasonMapping = mappingService.CalculateSeasonMapping(seriesId, seasons, allEpisodes);
 
         int jellyfinSeason = info.ParentIndexNumber ?? 1;
@@ -153,7 +153,7 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
             var locale = config?.PreferredLanguage ?? "pt-BR";
 
             using var httpClient = _httpClientFactory.CreateClient();
-            using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+            using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
             var episode = await apiClient.GetEpisodeAsync(crunchyrollEpisodeId, cancellationToken).ConfigureAwait(false);
             if (episode != null)

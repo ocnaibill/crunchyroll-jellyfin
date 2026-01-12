@@ -42,7 +42,7 @@ public class CrunchyrollSeriesProvider : IRemoteMetadataProvider<Series, SeriesI
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         string? crunchyrollId = info.GetProviderId("Crunchyroll");
         CrunchyrollSeries? series = null;
@@ -108,7 +108,7 @@ public class CrunchyrollSeriesProvider : IRemoteMetadataProvider<Series, SeriesI
         var locale = config?.PreferredLanguage ?? "pt-BR";
 
         using var httpClient = _httpClientFactory.CreateClient();
-        using var apiClient = new CrunchyrollApiClient(httpClient, _logger as ILogger<CrunchyrollApiClient> ?? throw new InvalidOperationException(), locale);
+        using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale);
 
         // Check if we have a Crunchyroll ID
         string? crunchyrollId = searchInfo.GetProviderId("Crunchyroll");
