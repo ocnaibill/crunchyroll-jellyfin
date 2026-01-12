@@ -1,7 +1,7 @@
 ---
 name: "Crunchyroll Metadata"
 guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-version: "1.2.2.0"
+version: "1.2.3.0"
 targetAbi: "10.9.0.0"
 framework: "net8.0"
 overview: "Fetches anime metadata from Crunchyroll with intelligent season and episode mapping."
@@ -15,6 +15,12 @@ owner: "ocnaibill"
 artifacts:
 - "Jellyfin.Plugin.Crunchyroll.dll"
 changelog: >
+  1.2.3.0 - API Stealth Improvements
+    - Updated API client to mimic Android TV behavior (User-Agent, Headers)
+    - Updated authentication tokens to less restricted client ID
+    - Added ETP-Anonymous-ID header to improve request legitimacy
+    - Maintains FlareSolverr fallback if direct API access still fails
+
   1.2.2.0 - Scraping fallback improvements
     - Implement caching strategy for scraping seasons and episodes
     - Fix API calls being attempted when scraping mode is active

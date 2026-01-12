@@ -16,9 +16,12 @@ public class CrunchyrollApiClient : IDisposable
     private const string ApiBaseUrl = "https://www.crunchyroll.com/content/v2";
     
     /// <summary>
-    /// Basic authentication token for anonymous access (base64 of "cr_web:").
+    /// Basic authentication token for anonymous access (matches Android TV client).
     /// </summary>
-    private const string AnonymousAuthToken = "Y3Jfd2ViOg==";
+    private const string AnonymousAuthToken = "bmR0aTZicXlqcm9wNXZnZjF0dnU6elpIcS00SEJJVDlDb2FMcnBPREJjRVRCTUNHai1QNlg=";
+    
+    // Using Android TV user agent from crunchyroll-rs to match the credentials
+    private const string UserAgent = "Crunchyroll/ANDROIDTV/3.50.0-22282 (Android 13.0; en-US; TCL-S5400AF Build/TP1A.220624.014)";
     
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -45,7 +48,7 @@ public class CrunchyrollApiClient : IDisposable
         _locale = locale;
 
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/plain, */*");
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", locale);
 
@@ -123,6 +126,7 @@ public class CrunchyrollApiClient : IDisposable
             request.Headers.Accept.Clear();
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", AnonymousAuthToken);
+            request.Headers.Add("ETP-Anonymous-ID", Guid.NewGuid().ToString());
             
             request.Content = new FormUrlEncodedContent(new[]
             {
