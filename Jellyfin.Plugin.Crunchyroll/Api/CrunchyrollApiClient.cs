@@ -54,7 +54,7 @@ public class CrunchyrollApiClient : IDisposable
         _password = password ?? string.Empty;
 
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/plain, */*");
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", locale);
 
