@@ -156,8 +156,28 @@ public static partial class CrunchyrollHtmlScraper
                     }
                     else
                     {
+                        // Log the title format for debugging
+                        logger.LogDebug("[HTML Scraper] Title doesn't match 'E# - Title' format: '{Title}'", fullTitle);
                         episode.Title = fullTitle;
+                        
+                        // Try alternative format: just number at start like "1 - Title"
+                        var altMatch = Regex.Match(fullTitle, @"^(\d+)\s*[-–:]\s*(.+)$");
+                        if (altMatch.Success)
+                        {
+                            episode.EpisodeNumber = altMatch.Groups[1].Value;
+                            episode.Title = altMatch.Groups[2].Value.Trim();
+                            if (int.TryParse(episode.EpisodeNumber, out int epNum))
+                            {
+                                episode.EpisodeNumberInt = epNum;
+                                episode.SequenceNumber = epNum;
+                            }
+                            logger.LogDebug("[HTML Scraper] Matched alt format: E{Num}", episode.EpisodeNumber);
+                        }
                     }
+                }
+                else
+                {
+                    logger.LogDebug("[HTML Scraper] No title found in episode card");
                 }
 
                 // Extract episode description

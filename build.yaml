@@ -1,7 +1,7 @@
 ---
 name: "Crunchyroll Metadata"
 guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-version: "1.4.4.0"
+version: "1.4.5.0"
 targetAbi: "10.9.0.0"
 framework: "net8.0"
 overview: "Fetches anime metadata from Crunchyroll with intelligent season and episode mapping."
@@ -15,6 +15,11 @@ owner: "ocnaibill"
 artifacts:
 - "Jellyfin.Plugin.Crunchyroll.dll"
 changelog: >
+  1.4.5.0 - Episode Number Parsing Fix
+    - Added fallback parsing for "# - Title" format (without E prefix)
+    - Better debug logging for title format issues
+    - Fix version format (was generating 5-part version)
+
   1.4.4.0 - Scraping Diagnostics
     - Detailed episode number/range logging in HTML scraper
     - Cache miss logging shows available keys for debugging
