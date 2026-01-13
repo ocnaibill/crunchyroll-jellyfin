@@ -42,6 +42,13 @@ public class CrunchyrollApiClient : IDisposable
     private static DateTime _lastAuthAttempt = DateTime.MinValue;
     private static readonly TimeSpan MinAuthInterval = TimeSpan.FromSeconds(10);
     private static readonly Random _random = new Random();
+    
+    // Static API response caches (shared across all instances to reduce API calls)
+    private static readonly Dictionary<string, List<CrunchyrollSeason>> _apiSeasonsCache = new();
+    private static readonly Dictionary<string, List<CrunchyrollEpisode>> _apiEpisodesCache = new();
+    private static readonly object _apiCacheLock = new();
+    private static DateTime _apiCacheExpiration = DateTime.MinValue;
+    private static readonly TimeSpan ApiCacheDuration = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CrunchyrollApiClient"/> class.
@@ -452,8 +459,10 @@ public class CrunchyrollApiClient : IDisposable
         }
     }
 
-    private Dictionary<string, List<CrunchyrollEpisode>> _scrapedEpisodesCache = new();
-    private List<CrunchyrollSeason> _scrapedSeasonsCache = new();
+    // Static scraping caches (shared across all instances to avoid redundant FlareSolverr requests)
+    private static readonly Dictionary<string, List<CrunchyrollEpisode>> _scrapedEpisodesCache = new();
+    private static readonly Dictionary<string, List<CrunchyrollSeason>> _scrapedSeasonsCache = new();
+    private static readonly object _scrapingCacheLock = new();
 
     /// <summary>
     /// Gets all seasons for a series.
@@ -468,6 +477,18 @@ public class CrunchyrollApiClient : IDisposable
             // Try API first if not in scraping mode
             if (!_useScrapingMode)
             {
+                // Check API cache first (thread-safe)
+                lock (_apiCacheLock)
+                {
+                    if (DateTime.UtcNow < _apiCacheExpiration && 
+                        _apiSeasonsCache.TryGetValue(seriesId, out var cachedSeasons) && 
+                        cachedSeasons.Count > 0)
+                    {
+                        _logger.LogDebug("[API Cache] Hit for seasons of series {SeriesId}", seriesId);
+                        return cachedSeasons;
+                    }
+                }
+
                 var url = $"{ApiBaseUrl}/cms/series/{seriesId}/seasons?locale={_locale}";
                 
                 _logger.LogDebug("Fetching seasons for series: {SeriesId}", seriesId);
@@ -475,10 +496,15 @@ public class CrunchyrollApiClient : IDisposable
                 var response = await GetAuthenticatedAsync<CrunchyrollResponse<CrunchyrollSeason>>(url, cancellationToken)
                     .ConfigureAwait(false);
 
-                // If successful (response is not null), return data.
-                // If GetAuthenticatedAsync returned null (due to auth failure triggering scraping mode), flow continues to scraping block.
-                if (response?.Data != null)
+                // If successful (response is not null), cache and return data.
+                if (response?.Data != null && response.Data.Count > 0)
                 {
+                    lock (_apiCacheLock)
+                    {
+                        _apiSeasonsCache[seriesId] = response.Data;
+                        _apiCacheExpiration = DateTime.UtcNow.Add(ApiCacheDuration);
+                    }
+                    _logger.LogDebug("[API Cache] Stored {Count} seasons for series {SeriesId}", response.Data.Count, seriesId);
                     return response.Data;
                 }
             }
@@ -492,10 +518,14 @@ public class CrunchyrollApiClient : IDisposable
                     return new List<CrunchyrollSeason>();
                 }
 
-                // If cache is populated for this instance, return it (assuming one instance per request chain)
-                if (_scrapedSeasonsCache.Count > 0)
+                // Check static cache first (thread-safe)
+                lock (_scrapingCacheLock)
                 {
-                    return _scrapedSeasonsCache;
+                    if (_scrapedSeasonsCache.TryGetValue(seriesId, out var cachedSeasons) && cachedSeasons.Count > 0)
+                    {
+                        _logger.LogDebug("[Scraping] Cache hit for series {SeriesId}, returning {Count} seasons", seriesId, cachedSeasons.Count);
+                        return cachedSeasons;
+                    }
                 }
 
                 // Scrape the series page
@@ -517,28 +547,30 @@ public class CrunchyrollApiClient : IDisposable
                 if (episodes.Count > 0)
                 {
                     // Organize into a single "Season" since scraping doesn't easily distinguish seasons yet
-                    // We use the seriesId as the seasonId purely for internal mapping in this fallback mode
                     var scrapedSeasonId = $"{seriesId}_scraped";
                     var season = new CrunchyrollSeason
                     {
                         Id = scrapedSeasonId,
-                        Title = "Season 1 (Scraped)", // Placeholder title
+                        Title = "Season 1 (Scraped)",
                         SeasonNumber = 1,
                         SeriesId = seriesId
                     };
 
-                    _scrapedSeasonsCache.Clear();
-                    _scrapedSeasonsCache.Add(season);
+                    var seasonsList = new List<CrunchyrollSeason> { season };
 
-                    _scrapedEpisodesCache.Clear();
-                    _scrapedEpisodesCache[scrapedSeasonId] = episodes;
+                    // Store in static cache (thread-safe)
+                    lock (_scrapingCacheLock)
+                    {
+                        _scrapedSeasonsCache[seriesId] = seasonsList;
+                        _scrapedEpisodesCache[scrapedSeasonId] = episodes;
+                    }
 
-                    _logger.LogInformation("[Scraping] Extracted {Count} episodes for series {SeriesId}", episodes.Count, seriesId);
-                    return _scrapedSeasonsCache;
+                    _logger.LogInformation("[Scraping] Cached {Count} episodes for series {SeriesId}", episodes.Count, seriesId);
+                    return seasonsList;
                 }
                 else
                 {
-                    _logger.LogWarning("[Scraping] No episodes extracted from HTML for series {SeriesId}. HTML might have different structure.", seriesId);
+                    _logger.LogWarning("[Scraping] No episodes extracted from HTML for series {SeriesId}. HTML might have different structure or not fully loaded.", seriesId);
                 }
             }
 
@@ -578,6 +610,18 @@ public class CrunchyrollApiClient : IDisposable
                 return new List<CrunchyrollEpisode>();
             }
 
+            // Check API cache first (thread-safe)
+            lock (_apiCacheLock)
+            {
+                if (DateTime.UtcNow < _apiCacheExpiration && 
+                    _apiEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes) && 
+                    cachedEpisodes.Count > 0)
+                {
+                    _logger.LogDebug("[API Cache] Hit for episodes of season {SeasonId}", seasonId);
+                    return cachedEpisodes;
+                }
+            }
+
             var url = $"{ApiBaseUrl}/cms/seasons/{seasonId}/episodes?locale={_locale}";
             
             _logger.LogDebug("Fetching episodes for season: {SeasonId}", seasonId);
@@ -585,8 +629,14 @@ public class CrunchyrollApiClient : IDisposable
             var response = await GetAuthenticatedAsync<CrunchyrollResponse<CrunchyrollEpisode>>(url, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (response?.Data != null)
+            if (response?.Data != null && response.Data.Count > 0)
             {
+                lock (_apiCacheLock)
+                {
+                    _apiEpisodesCache[seasonId] = response.Data;
+                    _apiCacheExpiration = DateTime.UtcNow.Add(ApiCacheDuration);
+                }
+                _logger.LogDebug("[API Cache] Stored {Count} episodes for season {SeasonId}", response.Data.Count, seasonId);
                 return response.Data;
             }
 

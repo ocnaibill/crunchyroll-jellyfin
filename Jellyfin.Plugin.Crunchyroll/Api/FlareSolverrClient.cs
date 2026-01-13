@@ -158,6 +158,13 @@ public class FlareSolverrRequest
     /// </summary>
     [JsonPropertyName("maxTimeout")]
     public int MaxTimeout { get; set; } = 60000;
+
+    /// <summary>
+    /// Gets or sets the time to wait for JavaScript to load (in milliseconds).
+    /// This allows dynamic content to render before capturing the page.
+    /// </summary>
+    [JsonPropertyName("wait")]
+    public int Wait { get; set; } = 3000;
 }
 
 /// <summary>
