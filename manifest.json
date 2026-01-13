@@ -8,10 +8,10 @@
     "category": "Metadata",
     "versions": [
       {
-        "version": "1.3.7.0",
-        "checksum": "d054b72b501b6baef3ecab6a0daeb1c1",
-        "timestamp": "2026-01-12T19:30:42Z",
-        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.7/Jellyfin.Plugin.Crunchyroll.zip"
+        "version": "1.4.3.0",
+        "checksum": "a6270beb858feed89f7dabd198d9c3b2",
+        "timestamp": "2026-01-13T12:54:14Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.3/Jellyfin.Plugin.Crunchyroll.zip"
       }
     ]
   }
