@@ -514,7 +514,7 @@ public class CrunchyrollApiClient : IDisposable
                 // Reuse the HTML scraper to get episodes
                 var episodes = CrunchyrollHtmlScraper.ExtractEpisodesFromHtml(html, _logger);
                 
-                if (episodes.Count \u003e 0)
+                if (episodes.Count > 0)
                 {
                     // Organize into a single "Season" since scraping doesn't easily distinguish seasons yet
                     // We use the seriesId as the seasonId purely for internal mapping in this fallback mode
