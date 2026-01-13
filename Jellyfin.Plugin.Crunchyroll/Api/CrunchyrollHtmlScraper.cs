@@ -219,7 +219,19 @@ public static partial class CrunchyrollHtmlScraper
                 }
             }
 
-            logger.LogDebug("Extracted {Count} episodes from HTML", episodes.Count);
+            // Log which episodes were found for debugging season issues
+            if (episodes.Count > 0)
+            {
+                var episodeNumbers = string.Join(", ", episodes.Select(e => $"E{e.EpisodeNumber ?? "?"}"));
+                var firstEp = episodes.First();
+                var lastEp = episodes.Last();
+                logger.LogInformation("[HTML Scraper] Extracted {Count} episodes: {EpisodeList}", episodes.Count, episodeNumbers);
+                logger.LogInformation("[HTML Scraper] Episode range: E{First} to E{Last}", firstEp.EpisodeNumber ?? "?", lastEp.EpisodeNumber ?? "?");
+            }
+            else
+            {
+                logger.LogWarning("[HTML Scraper] No episodes found in HTML. Looking for 'episode-card' elements.");
+            }
         }
         catch (Exception ex)
         {

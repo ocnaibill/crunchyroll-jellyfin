@@ -565,7 +565,11 @@ public class CrunchyrollApiClient : IDisposable
                         _scrapedEpisodesCache[scrapedSeasonId] = episodes;
                     }
 
-                    _logger.LogInformation("[Scraping] Cached {Count} episodes for series {SeriesId}", episodes.Count, seriesId);
+                    // Log detailed info about what was scraped
+                    var episodeIds = string.Join(", ", episodes.Take(5).Select(e => $"E{e.EpisodeNumber ?? "?"}: {e.Title?.Substring(0, Math.Min(20, e.Title?.Length ?? 0))}..."));
+                    _logger.LogInformation("[Scraping] Cached {Count} episodes for series {SeriesId} under season ID {SeasonId}", episodes.Count, seriesId, scrapedSeasonId);
+                    _logger.LogInformation("[Scraping] Sample episodes: {Samples}", episodeIds);
+                    _logger.LogWarning("[Scraping] NOTE: Scraping only captures the DEFAULT season displayed on the page. Multi-season support requires API access.");
                     return seasonsList;
                 }
                 else
@@ -597,15 +601,20 @@ public class CrunchyrollApiClient : IDisposable
             // If in scraping mode, try cache first
             if (_useScrapingMode)
             {
-                if (_scrapedEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes))
+                lock (_scrapingCacheLock)
                 {
-                    _logger.LogDebug("Returning {Count} scraped episodes from cache for season {SeasonId}", cachedEpisodes.Count, seasonId);
-                    return cachedEpisodes;
+                    if (_scrapedEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes))
+                    {
+                        _logger.LogInformation("[Scraping Cache] Hit for episodes of season {SeasonId}, returning {Count} episodes", seasonId, cachedEpisodes.Count);
+                        return cachedEpisodes;
+                    }
+                    
+                    // Log available keys for debugging
+                    var availableKeys = string.Join(", ", _scrapedEpisodesCache.Keys);
+                    _logger.LogWarning("[Scraping Cache] Miss for season {SeasonId}. Available keys: [{Keys}]", seasonId, availableKeys);
                 }
                 
-                // If not in cache but in scraping mode, we can't do much because we need seriesId to scrape,
-                // and this method only receives seasonId.
-                // However, the provider flow ensures GetSeasons is called first, which populates the cache.
+                // If not in cache but in scraping mode, we can't do much because we need seriesId to scrape
                 _logger.LogWarning("Scraping mode active but no cached episodes found for season {SeasonId}. Ensure GetSeasons was called first.", seasonId);
                 return new List<CrunchyrollEpisode>();
             }
