@@ -16,10 +16,10 @@ public class CrunchyrollApiClient : IDisposable
     private const string ApiBaseUrl = "https://www.crunchyroll.com/content/v2";
     
     /// <summary>
-    /// Basic authentication token (from crunchyroll-api Python project).
+    /// Basic authentication token (from crunchyroll-rs Android TV client).
     /// This token is used for OAuth2 authentication with Crunchyroll.
     /// </summary>
-    private const string BasicAuthToken = "bHF0ai11YmY1aHF4dGdvc2ZsYXQ6N2JIY3hfYnI0czJubWE1bVdrdHdKZEY0ZTU2UU5neFQ=";
+    private const string BasicAuthToken = "bmR0aTZicXlqcm9wNXZnZjF0dnU6elpIcS00SEJJVDlDb2FMcnBPREJjRVRCTUNHai1QNlg=";
     
     // Simplified User-Agent (matches Python implementation - less fingerprint surface)
     private const string UserAgent = "Crunchyroll/3.50.2";

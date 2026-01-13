@@ -1,7 +1,7 @@
 ---
 name: "Crunchyroll Metadata"
 guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-version: "1.4.0.0"
+version: "1.4.1.0"
 targetAbi: "10.9.0.0"
 framework: "net8.0"
 overview: "Fetches anime metadata from Crunchyroll with intelligent season and episode mapping."
@@ -15,8 +15,11 @@ owner: "ocnaibill"
 artifacts:
 - "Jellyfin.Plugin.Crunchyroll.dll"
 changelog: >
+  1.4.1.0 - Token Fix
+    - Reverted to crunchyroll-rs token (Python package token was inactive)
+    - Verified working via curl_cffi testing
+
   1.4.0.0 - Authentication Overhaul
-    - New Basic Auth token (from crunchyroll-api Python project)
     - Simplified User-Agent to reduce fingerprint surface
     - Implemented Refresh Token support for seamless session renewal
     - Automatic fallback to full login when refresh token expires
