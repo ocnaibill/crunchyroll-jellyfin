@@ -157,14 +157,15 @@ public class FlareSolverrRequest
     /// Gets or sets the max timeout in milliseconds.
     /// </summary>
     [JsonPropertyName("maxTimeout")]
-    public int MaxTimeout { get; set; } = 60000;
+    public int MaxTimeout { get; set; } = 120000;  // 2 minutes max
 
     /// <summary>
     /// Gets or sets the time to wait for JavaScript to load (in milliseconds).
     /// This allows dynamic content to render before capturing the page.
+    /// Crunchyroll's SPA requires significant time to render episode lists.
     /// </summary>
     [JsonPropertyName("wait")]
-    public int Wait { get; set; } = 3000;
+    public int Wait { get; set; } = 12000;  // 12 seconds for JS to render
 }
 
 /// <summary>
