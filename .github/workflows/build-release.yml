@@ -28,11 +28,35 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
+    - name: Get version from tag
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="0.0.0"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
     - name: Build
-      run: dotnet build -c Release --no-restore
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        dotnet build -c Release --no-restore \
+          -p:Version="${VERSION}.0" \
+          -p:AssemblyVersion="${VERSION}.0" \
+          -p:FileVersion="${VERSION}.0" \
+          -p:InformationalVersion="${VERSION}"
 
     - name: Publish
-      run: dotnet publish Jellyfin.Plugin.Crunchyroll/Jellyfin.Plugin.Crunchyroll.csproj -c Release -o ./publish
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        dotnet publish Jellyfin.Plugin.Crunchyroll/Jellyfin.Plugin.Crunchyroll.csproj \
+          -c Release -o ./publish \
+          -p:Version="${VERSION}.0" \
+          -p:AssemblyVersion="${VERSION}.0" \
+          -p:FileVersion="${VERSION}.0" \
+          -p:InformationalVersion="${VERSION}"
 
     - name: Create plugin zip
       run: |
@@ -79,15 +103,18 @@ jobs:
         CHECKSUM=${{ steps.checksum.outputs.checksum }}
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         
-        # Update manifest with new version info using jq
+        # Prepend new version to the versions array (preserves history)
         jq --arg version "${VERSION}.0" \
            --arg checksum "$CHECKSUM" \
            --arg timestamp "$TIMESTAMP" \
            --arg sourceUrl "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Jellyfin.Plugin.Crunchyroll.zip" \
-           '.[0].versions[0].version = $version | 
-            .[0].versions[0].checksum = $checksum | 
-            .[0].versions[0].timestamp = $timestamp |
-            .[0].versions[0].sourceUrl = $sourceUrl' manifest.json > manifest_updated.json
+           '.[0].versions = [{
+              version: $version,
+              changelog: "See GitHub release notes",
+              checksum: $checksum,
+              timestamp: $timestamp,
+              sourceUrl: $sourceUrl
+            }] + .[0].versions' manifest.json > manifest_updated.json
         
         mv manifest_updated.json manifest.json
         cat manifest.json

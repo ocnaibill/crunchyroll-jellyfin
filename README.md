@@ -205,6 +205,22 @@ When installed via the plugin repository, Jellyfin will automatically notify you
 
 ---
 
+## 🛠️ Developer Notes
+
+### Plugin Versioning
+
+Jellyfin reads the plugin version from the **compiled .NET assembly**, not from `manifest.json` or GitHub releases.
+
+- The `.csproj` file contains default version properties (`Version`, `AssemblyVersion`, `FileVersion`)
+- The CI workflow injects the Git tag version into the assembly at build time
+- `manifest.json` provides version history for updates and changelog display (but not the displayed version)
+
+If the plugin shows as `1.0.0.0` in Jellyfin:
+1. Check that the assembly was built with the correct `-p:Version=X.X.X.0` parameter
+2. Verify the `.csproj` has explicit version properties as a fallback
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome!

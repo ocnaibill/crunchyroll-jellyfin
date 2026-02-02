@@ -5,13 +5,182 @@
     "description": "Fetches anime metadata from Crunchyroll with intelligent season and episode mapping. Solves common issues with episode numbering across seasons and treats all seasons as part of the same series.",
     "overview": "Anime metadata provider with smart episode offset calculation",
     "owner": "ocnaibill",
-    "category": "Metadata",
+    "category": "Metadata Provider",
     "versions": [
       {
         "version": "1.4.10.0",
+        "changelog": "Bug fixes and improvements",
         "checksum": "14931c6a6516704394486589d5276260",
         "timestamp": "2026-01-16T00:21:14Z",
         "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.10/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.9.0",
+        "changelog": "Stability improvements and minor fixes",
+        "checksum": "",
+        "timestamp": "2025-12-30T18:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.9/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.8.0",
+        "changelog": "Performance improvements",
+        "checksum": "",
+        "timestamp": "2025-12-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.8/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.7.0",
+        "changelog": "Scraper Logic Refactor - Complete rewrite of episode extraction logic with unified regex for episode formats",
+        "checksum": "",
+        "timestamp": "2025-12-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.7/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.6.0",
+        "changelog": "Title Extraction Fix - Multiple fallback methods to extract episode title",
+        "checksum": "",
+        "timestamp": "2025-12-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.6/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.5.0",
+        "changelog": "Episode Number Parsing Fix - Added fallback parsing for '# - Title' format",
+        "checksum": "",
+        "timestamp": "2025-11-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.5/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.4.0",
+        "changelog": "Scraping Diagnostics - Detailed logging for episode number/range",
+        "checksum": "",
+        "timestamp": "2025-11-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.4/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.3.0",
+        "changelog": "Critical Cache Fix - Static cache shared across all instances to reduce API calls",
+        "checksum": "",
+        "timestamp": "2025-11-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.3/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.2.0",
+        "changelog": "Diagnostic Logging - Helps identify why scraping might be failing silently",
+        "checksum": "",
+        "timestamp": "2025-10-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.2/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.1.0",
+        "changelog": "Token Fix - Reverted to crunchyroll-rs token",
+        "checksum": "",
+        "timestamp": "2025-10-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.1/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.4.0.0",
+        "changelog": "Authentication Overhaul - Simplified User-Agent and Refresh Token support",
+        "checksum": "",
+        "timestamp": "2025-10-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.4.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.7.0",
+        "changelog": "Thumbnails & Stealth - Upgraded thumbnails to 1080p, added jitter delay",
+        "checksum": "",
+        "timestamp": "2025-09-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.7/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.6.0",
+        "changelog": "Concurrency Fixes - Fixed race condition in authentication",
+        "checksum": "",
+        "timestamp": "2025-09-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.6/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.5.0",
+        "changelog": "Robustness Improvements - Automatic retry and Cloudflare detection",
+        "checksum": "",
+        "timestamp": "2025-09-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.5/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.4.0",
+        "changelog": "Critical Rate Limit Fix - Static authentication state",
+        "checksum": "",
+        "timestamp": "2025-08-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.4/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.3.0",
+        "changelog": "Login Fixes - Added missing device_id and device_type",
+        "checksum": "",
+        "timestamp": "2025-08-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.3/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.2.0",
+        "changelog": "Hotfix 2 - Force update to ensure User-Agent fix",
+        "checksum": "",
+        "timestamp": "2025-08-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.2/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.1.0",
+        "changelog": "Hotfix - Fixed System.FormatException when setting User-Agent",
+        "checksum": "",
+        "timestamp": "2025-07-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.1/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.3.0.0",
+        "changelog": "User Login Support - Added ability to login with Crunchyroll credentials",
+        "checksum": "",
+        "timestamp": "2025-07-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.3.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.2.3.0",
+        "changelog": "API Stealth Improvements - Updated API client to mimic Android TV",
+        "checksum": "",
+        "timestamp": "2025-07-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.2.3/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.2.2.0",
+        "changelog": "Scraping fallback improvements - Caching strategy for scraping",
+        "checksum": "",
+        "timestamp": "2025-06-20T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.2.2/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.2.1.0",
+        "changelog": "Hotfix for FlareSolverr detection",
+        "checksum": "",
+        "timestamp": "2025-06-10T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.2.1/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.2.0.0",
+        "changelog": "FlareSolverr support - Cloudflare bypass integration",
+        "checksum": "",
+        "timestamp": "2025-06-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.2.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.1.0.0",
+        "changelog": "Authentication support - Anonymous authentication for Crunchyroll API",
+        "checksum": "",
+        "timestamp": "2025-05-15T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.1.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.0.0.0",
+        "changelog": "Initial release - Series, season, and episode metadata providers with image support",
+        "checksum": "",
+        "timestamp": "2025-05-01T12:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.0.0/Jellyfin.Plugin.Crunchyroll.zip"
       }
     ]
   }
