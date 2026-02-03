@@ -9,6 +9,13 @@
     "versions": [
       {
         "version": "1.5.0.0",
+        "changelog": "See GitHub release notes",
+        "checksum": "d1bdbe33ca5b5f339e02a33a1afd6bc8",
+        "timestamp": "2026-02-03T12:10:01Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.5.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "1.5.0.0",
         "changelog": "Issue #1 Fix - Movies/specials now map to Jellyfin Specials folder instead of breaking season numbering. Also added support for international season prefixes (S for French/English, T for Portuguese/Spanish).",
         "checksum": "",
         "timestamp": "2026-02-03T12:00:00Z",
