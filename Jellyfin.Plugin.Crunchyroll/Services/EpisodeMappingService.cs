@@ -46,8 +46,6 @@ public class EpisodeMappingService
             .ThenBy(s => s.SeasonNumber)
             .ToList();
 
-        int jellyfinSeasonNumber = 1;
-
         foreach (var season in sortedSeasons)
         {
             if (string.IsNullOrEmpty(season.Id))
@@ -78,15 +76,19 @@ public class EpisodeMappingService
                     season.Title,
                     season.Id);
                 
-                continue; // Don't increment jellyfinSeasonNumber for specials
+                continue;
             }
 
             // Calculate episode offset for regular seasons
-            int episodeOffset = CalculateEpisodeOffset(seasonEpisodes, jellyfinSeasonNumber);
+            // Use the real SeasonNumber from Crunchyroll instead of sequential numbering
+            // This fixes Issue #2 where missing seasons (geo-blocked) caused incorrect mapping
+            int episodeOffset = CalculateEpisodeOffset(seasonEpisodes, season.SeasonNumber);
 
             var entry = new SeasonMappingEntry
             {
-                JellyfinSeasonNumber = jellyfinSeasonNumber,
+                // Use real SeasonNumber from Crunchyroll to map directly to Jellyfin season
+                // e.g., CR Season 2 -> Jellyfin Season 2 (not sequential)
+                JellyfinSeasonNumber = season.SeasonNumber,
                 CrunchyrollSeasonId = season.Id,
                 CrunchyrollSeasonNumber = season.SeasonNumber,
                 CrunchyrollSeasonTitle = season.Title,
@@ -97,12 +99,10 @@ public class EpisodeMappingService
 
             _logger.LogDebug(
                 "Season mapping: Jellyfin S{JellyfinSeason} -> Crunchyroll S{CrunchyrollSeason} ({Title}), Offset: {Offset}",
-                jellyfinSeasonNumber,
+                season.SeasonNumber,
                 season.SeasonNumber,
                 season.Title,
                 episodeOffset);
-
-            jellyfinSeasonNumber++;
         }
 
         return mapping;

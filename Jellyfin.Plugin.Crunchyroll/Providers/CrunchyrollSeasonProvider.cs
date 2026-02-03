@@ -40,6 +40,7 @@ public class CrunchyrollSeasonProvider : IRemoteMetadataProvider<Season, SeasonI
 
         var config = Plugin.Instance?.Configuration;
         var locale = config?.PreferredLanguage ?? "pt-BR";
+        var fallbackLocale = config?.FallbackLanguage ?? "en-US";
 
         using var httpClient = _httpClientFactory.CreateClient();
         var flareSolverrUrl = config?.FlareSolverrUrl;
@@ -73,19 +74,46 @@ public class CrunchyrollSeasonProvider : IRemoteMetadataProvider<Season, SeasonI
         }
 
         var allSeasons = await apiClient.GetSeasonsAsync(parentSeriesId, cancellationToken).ConfigureAwait(false);
-        if (allSeasons.Count == 0)
-        {
-            return result;
-        }
-
-        // Match season by index
+        
+        // Match season by SeasonNumber (not by position!)
+        // This fixes Issue #2: geo-blocked seasons should not shift the mapping
         int jellyfinSeasonNumber = info.IndexNumber ?? 1;
-        var matchedSeason = FindMatchingSeason(jellyfinSeasonNumber, allSeasons);
+        var matchedSeason = FindMatchingSeasonByNumber(jellyfinSeasonNumber, allSeasons);
 
         if (matchedSeason != null)
         {
             return CreateSeasonResult(matchedSeason, jellyfinSeasonNumber);
         }
+
+        // Solution B: Try fallback locale if season not found
+        // This may help with geo-blocked content that's available in other regions
+        if (locale != fallbackLocale && allSeasons.Count > 0)
+        {
+            _logger.LogInformation(
+                "Season {SeasonNumber} not found in {Locale}, trying fallback locale {FallbackLocale}",
+                jellyfinSeasonNumber, locale, fallbackLocale);
+
+            using var fallbackHttpClient = _httpClientFactory.CreateClient();
+            using var fallbackApiClient = new CrunchyrollApiClient(
+                fallbackHttpClient, _logger, fallbackLocale, flareSolverrUrl, username, password);
+
+            var fallbackSeasons = await fallbackApiClient.GetSeasonsAsync(parentSeriesId, cancellationToken)
+                .ConfigureAwait(false);
+
+            matchedSeason = FindMatchingSeasonByNumber(jellyfinSeasonNumber, fallbackSeasons);
+
+            if (matchedSeason != null)
+            {
+                _logger.LogInformation(
+                    "Found Season {SeasonNumber} using fallback locale {FallbackLocale}",
+                    jellyfinSeasonNumber, fallbackLocale);
+                return CreateSeasonResult(matchedSeason, jellyfinSeasonNumber);
+            }
+        }
+
+        _logger.LogWarning(
+            "Season {SeasonNumber} not found in Crunchyroll (tried locales: {Locale}, {FallbackLocale})",
+            jellyfinSeasonNumber, locale, fallbackLocale);
 
         return result;
     }
@@ -171,7 +199,50 @@ public class CrunchyrollSeasonProvider : IRemoteMetadataProvider<Season, SeasonI
     }
 
     /// <summary>
-    /// Finds the matching Crunchyroll season for a Jellyfin season number.
+    /// Finds the matching Crunchyroll season by SeasonNumber.
+    /// This matches Jellyfin S2 to Crunchyroll S2 directly, ignoring missing seasons.
+    /// </summary>
+    private CrunchyrollSeason? FindMatchingSeasonByNumber(int jellyfinSeasonNumber, List<CrunchyrollSeason> seasons)
+    {
+        // Filter to prefer Japanese audio versions (original)
+        var preferredSeasons = seasons
+            .Where(s => s.AudioLocales?.Contains("ja-JP") == true)
+            .ToList();
+
+        // If no Japanese versions found, use all seasons
+        if (preferredSeasons.Count == 0)
+        {
+            preferredSeasons = seasons;
+        }
+
+        // Match by SeasonNumber directly (not by position!)
+        // This fixes Issue #2: Jellyfin S2 -> Crunchyroll S2, even if S1 is missing
+        var matchedSeason = preferredSeasons.FirstOrDefault(s => s.SeasonNumber == jellyfinSeasonNumber);
+
+        if (matchedSeason != null)
+        {
+            return matchedSeason;
+        }
+
+        // For Season 0 (Specials), check for OADs, OVAs, Specials, Movies
+        if (jellyfinSeasonNumber == 0)
+        {
+            matchedSeason = preferredSeasons.FirstOrDefault(s =>
+                s.SeasonNumber == 0 ||
+                s.Title?.Contains("OAD", StringComparison.OrdinalIgnoreCase) == true ||
+                s.Title?.Contains("OVA", StringComparison.OrdinalIgnoreCase) == true ||
+                s.Title?.Contains("Special", StringComparison.OrdinalIgnoreCase) == true ||
+                s.Title?.Contains("Movie", StringComparison.OrdinalIgnoreCase) == true);
+
+            return matchedSeason;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the matching Crunchyroll season for a Jellyfin season number (legacy, by position).
+    /// Kept for compatibility.
     /// </summary>
     private CrunchyrollSeason? FindMatchingSeason(int jellyfinSeasonNumber, List<CrunchyrollSeason> seasons)
     {

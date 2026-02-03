@@ -8,6 +8,13 @@
     "category": "Metadata Provider",
     "versions": [
       {
+        "version": "1.5.1.0",
+        "changelog": "Issue #2 Fix - Fixed season mapping when seasons are missing (geo-blocking). Plugin now maps by real Season Number instead of position. Added fallback locale support to find seasons available in other regions (e.g. S1 missing in pt-BR but available in en-US).",
+        "checksum": "",
+        "timestamp": "2026-02-03T13:45:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.5.1/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
         "version": "1.5.0.0",
         "changelog": "Issue #1 Fix - Movies/specials now map to Jellyfin Specials folder. Added i18n season prefixes (S for fr/en, T for pt/es).",
         "checksum": "d1bdbe33ca5b5f339e02a33a1afd6bc8",

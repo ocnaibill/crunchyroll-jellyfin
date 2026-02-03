@@ -217,6 +217,97 @@ public class EpisodeMappingServiceTests
     }
 
     /// <summary>
+    /// Tests Issue #2: Attack on Titan geo-blocking scenario.
+    /// When Crunchyroll doesn't have Season 1 in user's region, S2 should still map to S2.
+    /// </summary>
+    [Fact]
+    public void CalculateSeasonMapping_AttackOnTitan_GeoBlocking_ShouldMapBySeasonNumber()
+    {
+        // Arrange - Attack on Titan in a region where S1 is not available
+        // CR only has: OADs, S2, S3, S4 (S1 is geo-blocked)
+        var seasons = new List<CrunchyrollSeason>
+        {
+            // Season 1 is NOT available (geo-blocked)
+            new CrunchyrollSeason
+            {
+                Id = "GR751KNZY_OADS",
+                Title = "Attack on Titan OADs",
+                SeasonNumber = 0, // OADs typically have SeasonNumber = 0
+                SeasonSequenceNumber = 1,
+                NumberOfEpisodes = 8,
+                AudioLocales = new List<string> { "ja-JP" }
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR751KNZY_S2",
+                Title = "Attack on Titan Season 2",
+                SeasonNumber = 2, // Real season number from Crunchyroll
+                SeasonSequenceNumber = 2,
+                NumberOfEpisodes = 12,
+                AudioLocales = new List<string> { "ja-JP" }
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR751KNZY_S3",
+                Title = "Attack on Titan Season 3",
+                SeasonNumber = 3,
+                SeasonSequenceNumber = 3,
+                NumberOfEpisodes = 22,
+                AudioLocales = new List<string> { "ja-JP" }
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR751KNZY_S4",
+                Title = "Attack on Titan Final Season",
+                SeasonNumber = 4,
+                SeasonSequenceNumber = 4,
+                NumberOfEpisodes = 30,
+                AudioLocales = new List<string> { "ja-JP" }
+            }
+        };
+
+        var allEpisodes = new Dictionary<string, List<CrunchyrollEpisode>>
+        {
+            ["GR751KNZY_OADS"] = CreateEpisodeList(1, 8),  // OADs
+            ["GR751KNZY_S2"] = CreateEpisodeList(1, 12),   // S2
+            ["GR751KNZY_S3"] = CreateEpisodeList(1, 22),   // S3
+            ["GR751KNZY_S4"] = CreateEpisodeList(1, 30)    // S4
+        };
+
+        // Act
+        var result = _service.CalculateSeasonMapping("GR751KNZY", seasons, allEpisodes);
+
+        // Assert - Mapping should be by real SeasonNumber, not sequential
+        // OADs (SeasonNumber=0) -> S0
+        // S2 (SeasonNumber=2) -> S2 (not S1!)
+        // S3 (SeasonNumber=3) -> S3
+        // S4 (SeasonNumber=4) -> S4
+        
+        // OADs with SeasonNumber=0 should map to Specials (S0) 
+        // or be detected as special by IsMovieOrSpecial
+        var oadsEntry = result.Seasons.FirstOrDefault(s => s.CrunchyrollSeasonTitle == "Attack on Titan OADs");
+        oadsEntry.Should().NotBeNull();
+        oadsEntry!.JellyfinSeasonNumber.Should().Be(0, "OADs should map to Season 0 (Specials)");
+        
+        // Season 2 should map to Jellyfin S2 (not S1!)
+        var season2 = result.Seasons.First(s => s.JellyfinSeasonNumber == 2);
+        season2.CrunchyrollSeasonId.Should().Be("GR751KNZY_S2");
+        season2.CrunchyrollSeasonTitle.Should().Be("Attack on Titan Season 2");
+        
+        // Season 3 should map to Jellyfin S3
+        var season3 = result.Seasons.First(s => s.JellyfinSeasonNumber == 3);
+        season3.CrunchyrollSeasonId.Should().Be("GR751KNZY_S3");
+        
+        // Season 4 should map to Jellyfin S4
+        var season4 = result.Seasons.First(s => s.JellyfinSeasonNumber == 4);
+        season4.CrunchyrollSeasonId.Should().Be("GR751KNZY_S4");
+        
+        // Should NOT have Season 1 mapped (it's not available in CR)
+        result.Seasons.Should().NotContain(s => s.JellyfinSeasonNumber == 1, 
+            "Season 1 is not available in Crunchyroll (geo-blocked)");
+    }
+
+    /// <summary>
     /// Helper method to create a list of episodes for testing.
     /// </summary>
     private static List<CrunchyrollEpisode> CreateEpisodeList(int startingEpisode, int count)
