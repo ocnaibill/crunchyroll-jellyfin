@@ -23,12 +23,12 @@ public class ClearCrunchyrollIDsTask : IScheduledTask
     public string Name => "Clear Crunchyroll IDs";
     public string Key => "Jellyfin.Plugin.CrunchyrollMetadata.ClearIDs";
     public string Description => "Clears Crunchyroll provider IDs on all Series/Seasons/Episodes in TV libraries to ensure Items will be remapped on the next metadata refresh.";
-    public string Category => "CrunchyrollMetadata";
+    public string Category => "Maintenance";
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         => Array.Empty<TaskTriggerInfo>();
 
-//todo: doesnt work (throws error System.MissingMethodException: Method not found: 'System.Collections.Generic.List`1<MediaBrowser.Controller.Entities.BaseItem> MediaBrowser.Controller.Library.ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery)'.)
+    //todo: doesnt work (throws error System.MissingMethodException: Method not found: 'System.Collections.Generic.List`1<MediaBrowser.Controller.Entities.BaseItem> MediaBrowser.Controller.Library.ILibraryManager.GetItemList(MediaBrowser.Controller.Entities.InternalItemsQuery)'.)
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Crunchyroll ID clearing task started.");
@@ -48,21 +48,22 @@ public class ClearCrunchyrollIDsTask : IScheduledTask
             cancellationToken.ThrowIfCancellationRequested();
             var item = allTvItems[i];
 
-            if (item.ProviderIds?.ContainsKey("Crunchyroll") == true)
-            {
-                _logger.LogInformation("Clearing Crunchyroll ID for {ItemType}: {Name} (ID: {Id})",
-                item.GetType().Name, item.Name, item.GetProviderId("Crunchyroll"));
+            var key = item.ProviderIds?.Keys.FirstOrDefault(k => k.Contains("Crunchyroll", StringComparison.OrdinalIgnoreCase));
 
-                item.ProviderIds.Remove("Crunchyroll");
+            if (null != key)
+            {
+                _logger.LogDebug("Clearing Crunchyroll ID for {ItemType}: {Name} (ID: {Id})",
+                item.GetType().Name, item.Name, item.GetProviderId(key));
+
+                item.ProviderIds.Remove(key);
                 await SaveItemAsync(item, cancellationToken);
                 updated++;
             }
 
-
             progress.Report(total == 0 ? 100 : (i + 1) * 100.0 / total);
         }
 
-        _logger.LogInformation("ClearMetadataFieldTask finished. Updated {Updated} of {Total} items.", updated, total);
+        _logger.LogInformation("Task finished. Updated {Updated} of {Total} items.", updated, total);
     }
 
     private Task SaveItemAsync(BaseItem item, CancellationToken ct)
