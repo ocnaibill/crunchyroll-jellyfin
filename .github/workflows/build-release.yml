@@ -37,26 +37,39 @@ jobs:
           VERSION="0.0.0"
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
+        
+        # Check if version already has 4 parts (e.g., 1.5.1.1)
+        # If 3 parts (1.5.1), append .0 -> 1.5.1.0
+        # If 4 parts (1.5.1.1), use as-is -> 1.5.1.1
+        PARTS=$(echo "$VERSION" | tr '.' '\n' | wc -l)
+        if [ "$PARTS" -ge 4 ]; then
+          FULL_VERSION="$VERSION"
+        else
+          FULL_VERSION="${VERSION}.0"
+        fi
+        echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION -> Full: $FULL_VERSION"
 
     - name: Build
       run: |
+        FULL_VERSION="${{ steps.version.outputs.full_version }}"
         VERSION="${{ steps.version.outputs.version }}"
         dotnet build -c Release --no-restore \
-          -p:Version="${VERSION}.0" \
-          -p:AssemblyVersion="${VERSION}.0" \
-          -p:FileVersion="${VERSION}.0" \
-          -p:InformationalVersion="${VERSION}"
+          -p:Version="$FULL_VERSION" \
+          -p:AssemblyVersion="$FULL_VERSION" \
+          -p:FileVersion="$FULL_VERSION" \
+          -p:InformationalVersion="$VERSION"
 
     - name: Publish
       run: |
+        FULL_VERSION="${{ steps.version.outputs.full_version }}"
         VERSION="${{ steps.version.outputs.version }}"
         dotnet publish Jellyfin.Plugin.Crunchyroll/Jellyfin.Plugin.Crunchyroll.csproj \
           -c Release -o ./publish \
-          -p:Version="${VERSION}.0" \
-          -p:AssemblyVersion="${VERSION}.0" \
-          -p:FileVersion="${VERSION}.0" \
-          -p:InformationalVersion="${VERSION}"
+          -p:Version="$FULL_VERSION" \
+          -p:AssemblyVersion="$FULL_VERSION" \
+          -p:FileVersion="$FULL_VERSION" \
+          -p:InformationalVersion="$VERSION"
 
     - name: Create plugin zip
       run: |
@@ -95,16 +108,26 @@ jobs:
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
+        
+        # Check if version already has 4 parts (e.g., 1.5.1.1)
+        PARTS=$(echo "$VERSION" | tr '.' '\n' | wc -l)
+        if [ "$PARTS" -ge 4 ]; then
+          FULL_VERSION="$VERSION"
+        else
+          FULL_VERSION="${VERSION}.0"
+        fi
+        echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION -> Full: $FULL_VERSION"
 
     - name: Update manifest.json
       run: |
+        FULL_VERSION=${{ steps.version.outputs.full_version }}
         VERSION=${{ steps.version.outputs.version }}
         CHECKSUM=${{ steps.checksum.outputs.checksum }}
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         
         # Prepend new version to the versions array (preserves history)
-        jq --arg version "${VERSION}.0" \
+        jq --arg version "$FULL_VERSION" \
            --arg checksum "$CHECKSUM" \
            --arg timestamp "$TIMESTAMP" \
            --arg sourceUrl "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Jellyfin.Plugin.Crunchyroll.zip" \
