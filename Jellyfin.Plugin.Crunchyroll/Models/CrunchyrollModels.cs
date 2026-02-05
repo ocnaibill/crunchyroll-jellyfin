@@ -493,6 +493,12 @@ public class CrunchyrollEpisode
     /// </summary>
     [JsonPropertyName("subtitle_locales")]
     public List<string>? SubtitleLocales { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maturity ratings.
+    /// </summary>
+    [JsonPropertyName("maturity_ratings")]
+    public List<string>? MaturityRatings { get; set; }
 }
 
 /// <summary>

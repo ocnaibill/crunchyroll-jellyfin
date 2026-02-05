@@ -204,6 +204,12 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
             result.Item.PremiereDate = airDate;
         }
 
+        // Set official rating
+        if (crEpisode.MaturityRatings != null && crEpisode.MaturityRatings.Count > 0)
+        {
+            result.Item.OfficialRating = crEpisode.MaturityRatings[0];
+        }
+
         // Set provider IDs
         if (!string.IsNullOrEmpty(crEpisode.Id))
         {
