@@ -8,6 +8,13 @@
     "category": "Metadata Provider",
     "versions": [
       {
+        "version": "1.5.1.1",
+        "changelog": "Episode/Season Mapping Fixes + Maturity Ratings. Fixed season matching using SeasonSequenceNumber. Added minimum score threshold (70%) for series matching to prevent false positives. Episodes now preserve Jellyfin's IndexNumber for compatibility. Added episode maturity ratings support. Thanks to @Gishky and @imkylecat for their contributions!",
+        "checksum": "1ed7e05be09299427a8b4af4520b1d41",
+        "timestamp": "2026-02-05T13:09:16Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v1.5.1.1/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
         "version": "1.5.1.0",
         "changelog": "Issue #2 Fix - Fixed season mapping when seasons are missing (geo-blocking). Plugin now maps by real Season Number instead of position. Added fallback locale support to find seasons available in other regions (e.g. S1 missing in pt-BR but available in en-US).",
         "checksum": "5f17130bddc96185d92931a35a6c119d",
