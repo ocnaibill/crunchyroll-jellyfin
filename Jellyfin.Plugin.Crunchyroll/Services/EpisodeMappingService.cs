@@ -199,7 +199,7 @@ public class EpisodeMappingService
 
         // Find the first episode (by sequence number)
         var firstEpisode = episodes
-            .Where(e => e.EpisodeNumberInt.HasValue)
+            .Where(e => e.SeasonNumber == jellyfinSeasonNumber)
             .OrderBy(e => e.SequenceNumber)
             .FirstOrDefault();
 
@@ -209,12 +209,6 @@ public class EpisodeMappingService
         }
 
         int crunchyrollFirstEpisode = firstEpisode.EpisodeNumberInt.Value;
-        
-        // If Crunchyroll starts at 1 for this season, no offset needed
-        if (crunchyrollFirstEpisode == 1)
-        {
-            return 0;
-        }
 
         // Calculate offset: if CR starts at 25 and Jellyfin expects 1,
         // offset is 24 (CR_number = Jellyfin_number + offset)

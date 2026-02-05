@@ -251,10 +251,13 @@ public class CrunchyrollSeriesProvider : IRemoteMetadataProvider<Series, SeriesI
             if (score > bestScore)
             {
                 bestScore = score;
-                bestMatch = result;
+                if(score >= 70){ // Threshold for an acceptable match
+                    bestMatch = result;
+                }
             }
         }
 
+        _logger.LogDebug("Best match found with score: {bestScore}", bestScore);
         return bestMatch;
     }
 
@@ -284,7 +287,22 @@ public class CrunchyrollSeriesProvider : IRemoteMetadataProvider<Series, SeriesI
         var searchWords = search.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var candidateWords = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var matchingWords = searchWords.Intersect(candidateWords).Count();
+        searchWords = searchWords.Except(candidateWords).ToArray();
+        candidateWords = candidateWords.Except(searchWords).ToArray();
 
-        return matchingWords * 20;
+        var similarwords = 0;
+        foreach(var word in searchWords)
+        {
+            foreach(var cword in candidateWords)
+            {
+                if(cword.Contains(word) || word.Contains(cword))
+                {
+                    similarwords++;
+                    break;
+                }
+            }
+        }
+
+        return (int)(90 * ((float)(matchingWords + similarwords / 2)) / Math.Max(searchWords.Length, candidateWords.Length));
     }
 }

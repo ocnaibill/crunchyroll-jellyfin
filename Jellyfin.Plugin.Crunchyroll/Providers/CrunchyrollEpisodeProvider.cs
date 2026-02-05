@@ -38,6 +38,7 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
     /// <inheritdoc />
     public async Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
     {
+        _logger.LogDebug("Searching for S{Season}E{Episode} : {Name}", info.ParentIndexNumber, info.IndexNumber, info.Name);
         var result = new MetadataResult<Episode>();
 
         var config = Plugin.Instance?.Configuration;
@@ -49,17 +50,6 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
         var password = config?.Password;
         using var apiClient = new CrunchyrollApiClient(httpClient, _logger, locale, flareSolverrUrl, username, password);
 
-        // Check for existing Crunchyroll episode ID
-        string? crunchyrollEpisodeId = info.GetProviderId("CrunchyrollEpisode");
-        if (!string.IsNullOrEmpty(crunchyrollEpisodeId))
-        {
-            var episode = await apiClient.GetEpisodeAsync(crunchyrollEpisodeId, cancellationToken).ConfigureAwait(false);
-            if (episode != null)
-            {
-                return CreateEpisodeResult(episode);
-            }
-        }
-
         // Get series ID from parent
         string? seriesId = info.SeriesProviderIds?.GetValueOrDefault("Crunchyroll");
         if (string.IsNullOrEmpty(seriesId))
@@ -70,9 +60,9 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
 
         // Get all seasons and episodes
         var seasons = await apiClient.GetSeasonsAsync(seriesId, cancellationToken).ConfigureAwait(false);
-        if (seasons.Count == 0)
+        if (seasons.Count == 0 || null == seasons.FirstOrDefault(s => s.SeasonSequenceNumber == info.ParentIndexNumber))
         {
-            _logger.LogWarning("No seasons found for series: {SeriesId}", seriesId);
+            _logger.LogDebug("Season not found");
             return result;
         }
 
@@ -113,14 +103,17 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
 
             if (matchResult.Success && matchResult.Episode != null)
             {
-                _logger.LogInformation(
+                _logger.LogDebug(
                     "Matched Jellyfin S{JellyfinS}E{JellyfinE} to Crunchyroll episode '{Title}' (Confidence: {Confidence}%)",
                     jellyfinSeason,
                     jellyfinEpisode,
                     matchResult.Episode.Title,
                     matchResult.Confidence);
 
-                return CreateEpisodeResult(matchResult.Episode);
+                var e = CreateEpisodeResult(matchResult.Episode);
+                e.Item.IndexNumber = info.IndexNumber;
+                e.Item.ParentIndexNumber = info.ParentIndexNumber;
+                return e;
             }
         }
         else
@@ -129,7 +122,10 @@ public class CrunchyrollEpisodeProvider : IRemoteMetadataProvider<Episode, Episo
             var matchedEpisode = FindEpisodeSimple(jellyfinSeason, jellyfinEpisode, seasons, allEpisodes);
             if (matchedEpisode != null)
             {
-                return CreateEpisodeResult(matchedEpisode);
+                var e = CreateEpisodeResult(matchedEpisode);
+                e.Item.IndexNumber = info.IndexNumber;
+                e.Item.ParentIndexNumber = info.ParentIndexNumber;
+                return e;
             }
         }
 

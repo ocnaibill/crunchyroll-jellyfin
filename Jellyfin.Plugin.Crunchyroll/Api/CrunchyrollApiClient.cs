@@ -76,7 +76,7 @@ public class CrunchyrollApiClient : IDisposable
         if (!string.IsNullOrWhiteSpace(flareSolverrUrl))
         {
             _flareSolverrClient = new FlareSolverrClient(new HttpClient(), logger, flareSolverrUrl);
-            _logger.LogInformation("FlareSolverr configured at: {Url}", flareSolverrUrl);
+            _logger.LogDebug("FlareSolverr configured at: {Url}", flareSolverrUrl);
         }
     }
 

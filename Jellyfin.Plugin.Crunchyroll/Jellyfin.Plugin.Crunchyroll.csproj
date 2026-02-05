@@ -4,9 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     
     <!-- Plugin Version - Overridden by CI from Git tag -->
-    <Version>1.5.1.0</Version>
-    <AssemblyVersion>1.5.1.0</AssemblyVersion>
-    <FileVersion>1.5.1.0</FileVersion>
+    <Version>1.5.1.1</Version>
+    <AssemblyVersion>1.5.1.1</AssemblyVersion>
+    <FileVersion>1.5.1.1</FileVersion>
     <InformationalVersion>1.5.1</InformationalVersion>
     
     <!-- Plugin Metadata -->
