@@ -9,6 +9,13 @@
     "versions": [
       {
         "version": "2.0.0.0",
+        "changelog": "See GitHub release notes",
+        "checksum": "4e070443e7b39b408917347b442246a0",
+        "timestamp": "2026-02-06T21:24:24Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.0.0.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "2.0.0.0",
         "changelog": "Cloudflare Bypass Overhaul (CDP Architecture). All API calls now go through Chrome DevTools Protocol inside FlareSolverr, bypassing Cloudflare TLS fingerprinting. Fixed critical season mapping bug (season_sequence_number vs season_number). Anonymous auth via CDP. New config: DockerContainerName. Requires FlareSolverr as Docker container with websocket-client.",
         "checksum": "",
         "timestamp": "2026-02-06T23:00:00Z",
