@@ -9,6 +9,13 @@
     "versions": [
       {
         "version": "2.1.0.0",
+        "changelog": "See GitHub release notes",
+        "checksum": "351d09896a161cc84cc94fe84cead0cf",
+        "timestamp": "2026-02-06T23:56:43Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.1.0.0/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
+        "version": "2.1.0.0",
         "changelog": "EnsureBrowserAliveAsync keeps Chrome alive automatically. CDP episode fetching on cache miss. Improved session cleanup (5s timeout). Enhanced season matching with 3-tier fallback. Chrome CDP URL config. FlareSolverr documented as required with new installation guide (FLARESOLVERR.md).",
         "checksum": "",
         "timestamp": "2026-02-07T00:00:00Z",
