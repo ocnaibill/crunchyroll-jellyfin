@@ -10,8 +10,8 @@
       {
         "version": "2.2.0.0",
         "changelog": "Token auto-renewal on expiration (retry-on-expired pattern). Simplified CDP proxy architecture with centralized CdpFetchWithAuthRetryAsync helper. CDP DOM extraction fallback for complete Cloudflare resilience. Full image pipeline (PosterTall, PosterWide, episode thumbnails). Task progress logging (PR #7 by @Gishky).",
-        "checksum": "",
-        "timestamp": "2026-02-09T00:00:00Z",
+        "checksum": "df40c5f89fed2884aafd8de54cd633a3",
+        "timestamp": "2026-02-09T17:51:07Z",
         "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.2.0.0/Jellyfin.Plugin.Crunchyroll.zip"
       },
       {
