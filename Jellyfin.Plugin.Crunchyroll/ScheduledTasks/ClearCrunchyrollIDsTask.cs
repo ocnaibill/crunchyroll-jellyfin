@@ -41,6 +41,8 @@ public class ClearCrunchyrollIDsTask : IScheduledTask
 
         var total = allTvItems.Count;
         var updated = 0;
+        var skipped = 0;
+        int lastlog = 0;
 
         for (var i = 0; i < total; i++)
         {
@@ -58,11 +60,22 @@ public class ClearCrunchyrollIDsTask : IScheduledTask
                 await SaveItemAsync(item, cancellationToken);
                 updated++;
             }
+            else
+            {
+                skipped++;
+            }
 
-            progress.Report(total == 0 ? 100 : (i + 1) * 100.0 / total);
+            int progressint = (int)((i + 1) * 100.0 / total);
+            if(progressint > lastlog)
+            {
+                _logger.LogInformation("Progress: {Progress}%. Updated {Updated} of {Total} items. Skipped {Skipped} items due to no Crunchyroll ID.", progressint, updated, total, skipped);
+                lastlog = progressint;
+            }
+
+            progress.Report(total == 0 ? 100 : progressint);
         }
 
-        _logger.LogInformation("Task finished. Updated {Updated} of {Total} items.", updated, total);
+        _logger.LogInformation("Task finished. Updated {Updated} of {Total} items. Skipped {Skipped} items due to no Crunchyroll ID.", updated, total, skipped);
     }
 
     private async Task SaveItemAsync(BaseItem item, CancellationToken ct)

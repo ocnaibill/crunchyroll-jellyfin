@@ -478,9 +478,19 @@ public class CrunchyrollApiClient : IDisposable
                 }
             }
 
-            // Fall back to scraping if API failed or in scraping mode
+            // Fall back to CDP proxy when Cloudflare blocks the API
             if (_useScrapingMode && HasFlareSolverr)
             {
+                // CDP proxy: search via the real API through Chrome
+                var proxyResults = await TrySearchViaApiProxyAsync(encodedQuery, limit, cancellationToken).ConfigureAwait(false);
+                if (proxyResults != null && proxyResults.Count > 0)
+                {
+                    _logger.LogInformation("[CDP Proxy] Search for '{Query}' returned {Count} results", query, proxyResults.Count);
+                    return proxyResults;
+                }
+
+                // Last resort: HTML scraping (very limited on modern Crunchyroll SPA)
+                _logger.LogWarning("[Fallback] CDP proxy search failed for '{Query}'. Trying HTML scraping (limited)...", query);
                 var searchUrl = $"{BaseUrl}/{_locale.ToLowerInvariant()}/search?q={encodedQuery}";
                 var html = await GetPageViaFlareSolverrAsync(searchUrl, cancellationToken).ConfigureAwait(false);
                 
@@ -527,9 +537,25 @@ public class CrunchyrollApiClient : IDisposable
                 }
             }
 
-            // Fall back to scraping if API failed or in scraping mode
+            // Fall back to CDP proxy when Cloudflare blocks the API
             if (_useScrapingMode && HasFlareSolverr)
             {
+                // CDP proxy: fetches from the real API via Chrome inside FlareSolverr
+                // Returns complete series data including all image variants
+                var proxyResult = await TryGetSeriesViaApiProxyAsync(seriesId, cancellationToken).ConfigureAwait(false);
+                if (proxyResult != null)
+                {
+                    _logger.LogInformation("[CDP Proxy] Got series {SeriesId}: {Title} (PosterTall={HasTall}, PosterWide={HasWide})",
+                        seriesId,
+                        proxyResult.Title,
+                        proxyResult.Images?.PosterTall?.Count > 0,
+                        proxyResult.Images?.PosterWide?.Count > 0);
+                    return proxyResult;
+                }
+
+                // Last resort: HTML scraping (very limited on modern Crunchyroll SPA)
+                // Only gets title from og:title and a single poster from og:image
+                _logger.LogWarning("[Fallback] CDP proxy failed for series {SeriesId}. Trying HTML scraping (limited data)...", seriesId);
                 var pageUrl = $"{BaseUrl}/{_locale.ToLowerInvariant()}/series/{seriesId}";
                 var html = await GetPageViaFlareSolverrAsync(pageUrl, cancellationToken).ConfigureAwait(false);
                 
@@ -599,26 +625,27 @@ public class CrunchyrollApiClient : IDisposable
                 }
             }
 
-            // Fall back to FlareSolverr API proxy or scraping if API failed or in scraping mode
+            // Fall back to CDP proxy when Cloudflare blocks the API
             if (_useScrapingMode)
             {
                 if (!HasFlareSolverr)
                 {
-                    _logger.LogWarning("Cannot scrape seasons: FlareSolverr is not configured.");
+                    _logger.LogWarning("Cannot fetch seasons: FlareSolverr is not configured and API is blocked by Cloudflare.");
                     return new List<CrunchyrollSeason>();
                 }
 
-                // Check static cache first (thread-safe)
+                // Check cache first (thread-safe)
                 lock (_scrapingCacheLock)
                 {
                     if (_scrapedSeasonsCache.TryGetValue(seriesId, out var cachedSeasons) && cachedSeasons.Count > 0)
                     {
-                        _logger.LogDebug("[Scraping] Cache hit for series {SeriesId}, returning {Count} seasons", seriesId, cachedSeasons.Count);
+                        _logger.LogDebug("[Cache] Hit for seasons of series {SeriesId}, returning {Count} seasons", seriesId, cachedSeasons.Count);
                         return cachedSeasons;
                     }
                 }
 
-                // Strategy 1: Try FlareSolverr API proxy (bypasses Cloudflare for API requests)
+                // CDP proxy: fetches from the real API via Chrome inside FlareSolverr
+                // Returns complete season data with all metadata
                 var apiProxySeasonsResult = await TryGetSeasonsViaApiProxyAsync(seriesId, cancellationToken).ConfigureAwait(false);
                 if (apiProxySeasonsResult != null && apiProxySeasonsResult.Count > 0)
                 {
@@ -629,57 +656,25 @@ public class CrunchyrollApiClient : IDisposable
                     return apiProxySeasonsResult;
                 }
 
-                // Strategy 2: Scrape the series page (limited - new CR frontend is SPA)
-                var url = $"{BaseUrl}/series/{seriesId}";
-                _logger.LogInformation("Scraping series page via FlareSolverr: {Url}", url);
-                
-                var html = await GetPageViaFlareSolverrAsync(url, cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrEmpty(html))
+                // CDP DOM extraction: navigate to the page in Chrome, wait for React to render
+                // the episode cards, then extract data directly from the DOM via JavaScript.
+                // This works even when the CDP proxy API calls fail, because the browser's
+                // own JavaScript loads the episodes client-side.
+                _logger.LogInformation("[CDP DOM] CDP proxy API failed. Trying DOM extraction for series {SeriesId}...", seriesId);
+                var domResult = await TryGetSeasonsViaDomExtractionAsync(seriesId, cancellationToken).ConfigureAwait(false);
+                if (domResult != null && domResult.Count > 0)
                 {
-                    _logger.LogWarning("[Scraping] FlareSolverr returned empty HTML for series {SeriesId}", seriesId);
-                    return new List<CrunchyrollSeason>();
-                }
-                
-                _logger.LogInformation("[Scraping] Got {Length} chars of HTML for series {SeriesId}", html.Length, seriesId);
-
-                // Reuse the HTML scraper to get episodes
-                var episodes = CrunchyrollHtmlScraper.ExtractEpisodesFromHtml(html, _logger);
-                
-                if (episodes.Count > 0)
-                {
-                    // Organize into a single "Season" since scraping doesn't easily distinguish seasons yet
-                    var scrapedSeasonId = $"{seriesId}_scraped";
-                    var season = new CrunchyrollSeason
-                    {
-                        Id = scrapedSeasonId,
-                        Title = "Season 1 (Scraped)",
-                        SeasonNumber = 1,
-                        SeriesId = seriesId
-                    };
-
-                    var seasonsList = new List<CrunchyrollSeason> { season };
-
-                    // Store in static cache (thread-safe)
                     lock (_scrapingCacheLock)
                     {
-                        _scrapedSeasonsCache[seriesId] = seasonsList;
-                        _scrapedEpisodesCache[scrapedSeasonId] = episodes;
+                        _scrapedSeasonsCache[seriesId] = domResult;
                     }
+                    return domResult;
+                }
 
-                    // Log detailed info about what was scraped
-                    var episodeIds = string.Join(", ", episodes.Take(5).Select(e => $"E{e.EpisodeNumber ?? "?"}: {e.Title?.Substring(0, Math.Min(20, e.Title?.Length ?? 0))}..."));
-                    _logger.LogInformation("[Scraping] Cached {Count} episodes for series {SeriesId} under season ID {SeasonId}", episodes.Count, seriesId, scrapedSeasonId);
-                    _logger.LogInformation("[Scraping] Sample episodes: {Samples}", episodeIds);
-                    _logger.LogWarning("[Scraping] NOTE: Scraping only captures the DEFAULT season displayed on the page. Multi-season support requires API access.");
-                    return seasonsList;
-                }
-                else
-                {
-                    _logger.LogWarning("[Scraping] No episodes extracted from HTML for series {SeriesId}. HTML might have different structure or not fully loaded.", seriesId);
-                }
+                _logger.LogWarning("[Fallback] All strategies failed for series {SeriesId}.", seriesId);
             }
 
-            _logger.LogWarning("[Scraping] No seasons found for series: {SeriesId}", seriesId);
+            _logger.LogWarning("No seasons found for series: {SeriesId}", seriesId);
             return new List<CrunchyrollSeason>();
         }
         catch (Exception ex)
@@ -798,31 +793,31 @@ public class CrunchyrollApiClient : IDisposable
     }
 
     /// <summary>
-    /// Gets episodes for a series by scraping the series page.
-    /// This is useful when API is blocked and we have FlareSolverr.
+    /// Gets episodes for a series by fetching all seasons and their episodes.
+    /// Uses CDP proxy when API is blocked by Cloudflare.
     /// </summary>
     /// <param name="seriesId">The Crunchyroll series ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of episodes from the first/default season.</returns>
+    /// <returns>List of episodes from all seasons.</returns>
     public async Task<List<CrunchyrollEpisode>> GetEpisodesBySeriesIdAsync(string seriesId, CancellationToken cancellationToken = default)
     {
         try
         {
-            if (!HasFlareSolverr)
-            {
-                _logger.LogWarning("Cannot get episodes by series ID without FlareSolverr");
-                return new List<CrunchyrollEpisode>();
-            }
-
-            var pageUrl = $"{BaseUrl}/{_locale.ToLowerInvariant()}/series/{seriesId}";
-            var html = await GetPageViaFlareSolverrAsync(pageUrl, cancellationToken).ConfigureAwait(false);
+            var allEpisodes = new List<CrunchyrollEpisode>();
+            var seasons = await GetSeasonsAsync(seriesId, cancellationToken).ConfigureAwait(false);
             
-            if (!string.IsNullOrEmpty(html))
+            foreach (var season in seasons)
             {
-                return CrunchyrollHtmlScraper.ExtractEpisodesFromHtml(html, _logger);
+                if (string.IsNullOrEmpty(season.Id))
+                {
+                    continue;
+                }
+
+                var episodes = await GetEpisodesAsync(season.Id, cancellationToken).ConfigureAwait(false);
+                allEpisodes.AddRange(episodes);
             }
 
-            return new List<CrunchyrollEpisode>();
+            return allEpisodes;
         }
         catch (Exception ex)
         {
@@ -851,7 +846,25 @@ public class CrunchyrollApiClient : IDisposable
                 var response = await GetAuthenticatedAsync<CrunchyrollResponse<CrunchyrollEpisode>>(url, cancellationToken)
                     .ConfigureAwait(false);
 
-                return response?.Data?.FirstOrDefault();
+                var episode = response?.Data?.FirstOrDefault();
+                if (episode != null)
+                {
+                    return episode;
+                }
+            }
+
+            // Fall back to CDP proxy if in scraping mode (needed for episode thumbnails)
+            if (_useScrapingMode && HasFlareSolverr)
+            {
+                var proxyResult = await TryGetEpisodeViaApiProxyAsync(episodeId, cancellationToken).ConfigureAwait(false);
+                if (proxyResult != null)
+                {
+                    _logger.LogInformation("[CDP Proxy] Got episode {EpisodeId}: {Title} (HasThumbnail={HasThumb})",
+                        episodeId,
+                        proxyResult.Title,
+                        proxyResult.Images?.Thumbnail?.Count > 0);
+                    return proxyResult;
+                }
             }
 
             _logger.LogDebug("Episode not found: {EpisodeId}", episodeId);
@@ -971,52 +984,97 @@ public class CrunchyrollApiClient : IDisposable
     }
 
     /// <summary>
-    /// Tries to fetch seasons for a series through CDP (Chrome DevTools Protocol).
-    /// Flow: 1) Authenticate via CDP fetch → get Bearer token
-    ///       2) Fetch seasons API via CDP fetch with Bearer header → get JSON data
-    /// All requests execute inside Chrome in FlareSolverr, bypassing Cloudflare's TLS fingerprinting.
+    /// Core helper: authenticates via CDP, calls the API, and automatically retries once
+    /// if the token was expired/rejected. This eliminates the "token expired mid-operation"
+    /// problem where individual calls would fail permanently without retry.
     /// </summary>
-    private async Task<List<CrunchyrollSeason>?> TryGetSeasonsViaApiProxyAsync(string seriesId, CancellationToken cancellationToken)
+    /// <param name="apiPath">The Crunchyroll API path (e.g. /content/v2/cms/series/{id}).</param>
+    /// <param name="operationName">Human-readable label for logging (e.g. "seasons", "episodes").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The JSON response string, or null on failure.</returns>
+    private async Task<string?> CdpFetchWithAuthRetryAsync(string apiPath, string operationName, CancellationToken cancellationToken)
     {
         if (_flareSolverrClient == null)
         {
             return null;
         }
 
-        try
+        const int maxAttempts = 2; // 1 normal + 1 retry after re-auth
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            // Step 1: Get authenticated token via CDP
+            // Step 1: Get (or refresh) the authenticated token
             var token = await TryAuthenticateViaFlareSolverrAsync(cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(token))
             {
-                _logger.LogDebug("[CDP Proxy] Cannot authenticate for seasons");
+                _logger.LogDebug("[CDP Proxy] Cannot authenticate for {Operation}", operationName);
                 return null;
             }
 
-            // Step 2: Fetch seasons with Bearer token via CDP fetch()
-            var apiPath = $"/content/v2/cms/series/{seriesId}/seasons?locale={_locale}";
+            // Step 2: Call the API with Bearer token via CDP fetch()
             var headers = new Dictionary<string, string>
             {
                 ["Authorization"] = $"Bearer {token}"
             };
 
-            _logger.LogInformation("[CDP Proxy] Fetching seasons for series {SeriesId}", seriesId);
+            if (attempt == 1)
+            {
+                _logger.LogInformation("[CDP Proxy] Fetching {Operation}: {Path}", operationName, apiPath);
+            }
+            else
+            {
+                _logger.LogInformation("[CDP Proxy] Retry #{Attempt} for {Operation} with fresh token", attempt, operationName);
+            }
 
             var json = await _flareSolverrClient.CdpFetchJsonAsync(
                 _dockerContainerName, apiPath, "GET", headers, null, cancellationToken).ConfigureAwait(false);
 
             if (string.IsNullOrEmpty(json))
             {
-                _logger.LogDebug("[CDP Proxy] No response for seasons");
+                _logger.LogDebug("[CDP Proxy] No response for {Operation}", operationName);
                 return null;
             }
 
-            // Check for auth errors (token might have expired between auth and this call)
+            // Step 3: Check for auth errors — if token expired, invalidate and retry
             if (json.Contains("invalid_auth_token") || json.Contains("unauthorized"))
             {
-                _logger.LogWarning("[CDP Proxy] Token rejected for seasons. Clearing cache.");
+                _logger.LogWarning("[CDP Proxy] Token rejected for {Operation} (attempt {Attempt}/{Max}). Invalidating token.",
+                    operationName, attempt, maxAttempts);
                 _browserAccessToken = null;
                 _browserTokenExpiration = DateTime.MinValue;
+
+                if (attempt < maxAttempts)
+                {
+                    // Will loop back, TryAuthenticateViaFlareSolverrAsync will issue a fresh token
+                    continue;
+                }
+
+                _logger.LogError("[CDP Proxy] Token still rejected after re-auth for {Operation}. Giving up.", operationName);
+                return null;
+            }
+
+            // Success — return the JSON
+            return json;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to fetch seasons for a series through CDP (Chrome DevTools Protocol).
+    /// Flow: 1) Authenticate via CDP fetch → get Bearer token
+    ///       2) Fetch seasons API via CDP fetch with Bearer header → get JSON data
+    /// All requests execute inside Chrome in FlareSolverr, bypassing Cloudflare's TLS fingerprinting.
+    /// If the token has expired, re-authenticates and retries once automatically.
+    /// </summary>
+    private async Task<List<CrunchyrollSeason>?> TryGetSeasonsViaApiProxyAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var apiPath = $"/content/v2/cms/series/{seriesId}/seasons?locale={_locale}";
+            var json = await CdpFetchWithAuthRetryAsync(apiPath, $"seasons/{seriesId}", cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(json))
+            {
                 return null;
             }
 
@@ -1049,47 +1107,16 @@ public class CrunchyrollApiClient : IDisposable
     /// <summary>
     /// Tries to fetch episodes for a season through CDP (Chrome DevTools Protocol).
     /// Same approach as TryGetSeasonsViaApiProxyAsync - uses CDP-based auth + CDP fetch.
+    /// Automatically retries once on token expiration.
     /// </summary>
     private async Task<List<CrunchyrollEpisode>?> TryGetEpisodesViaApiProxyAsync(string seasonId, CancellationToken cancellationToken)
     {
-        if (_flareSolverrClient == null)
-        {
-            return null;
-        }
-
         try
         {
-            // Step 1: Get authenticated token via CDP
-            var token = await TryAuthenticateViaFlareSolverrAsync(cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(token))
-            {
-                _logger.LogDebug("[CDP Proxy] Cannot authenticate for episodes");
-                return null;
-            }
-
-            // Step 2: Fetch episodes with Bearer token via CDP fetch()
             var apiPath = $"/content/v2/cms/seasons/{seasonId}/episodes?locale={_locale}";
-            var headers = new Dictionary<string, string>
-            {
-                ["Authorization"] = $"Bearer {token}"
-            };
-
-            _logger.LogInformation("[CDP Proxy] Fetching episodes for season {SeasonId}", seasonId);
-
-            var json = await _flareSolverrClient.CdpFetchJsonAsync(
-                _dockerContainerName, apiPath, "GET", headers, null, cancellationToken).ConfigureAwait(false);
-
+            var json = await CdpFetchWithAuthRetryAsync(apiPath, $"episodes/{seasonId}", cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(json))
             {
-                return null;
-            }
-
-            // Check for auth errors
-            if (json.Contains("invalid_auth_token") || json.Contains("unauthorized"))
-            {
-                _logger.LogWarning("[CDP Proxy] Token rejected for episodes. Clearing cache.");
-                _browserAccessToken = null;
-                _browserTokenExpiration = DateTime.MinValue;
                 return null;
             }
 
@@ -1104,6 +1131,257 @@ public class CrunchyrollApiClient : IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[CDP Proxy] Failed to fetch episodes for season {SeasonId}", seasonId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to fetch series details through CDP (Chrome DevTools Protocol).
+    /// This returns the full series object including PosterTall and PosterWide images,
+    /// which are essential for the Jellyfin image provider.
+    /// Automatically retries once on token expiration.
+    /// </summary>
+    private async Task<CrunchyrollSeries?> TryGetSeriesViaApiProxyAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var apiPath = $"/content/v2/cms/series/{seriesId}?locale={_locale}";
+            var json = await CdpFetchWithAuthRetryAsync(apiPath, $"series/{seriesId}", cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(json))
+            {
+                return null;
+            }
+
+            var response = JsonSerializer.Deserialize<CrunchyrollResponse<CrunchyrollSeries>>(json);
+            var series = response?.Data?.FirstOrDefault();
+            if (series != null)
+            {
+                _logger.LogInformation("[CDP Proxy] Got series {SeriesId}: {Title}",
+                    seriesId, series.Title);
+                return series;
+            }
+
+            _logger.LogDebug("[CDP Proxy] No series data in response for {SeriesId}", seriesId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CDP Proxy] Failed to fetch series {SeriesId}", seriesId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to fetch a single episode through CDP (Chrome DevTools Protocol).
+    /// This returns the full episode object including thumbnail images,
+    /// which are essential for the Jellyfin episode image provider.
+    /// Automatically retries once on token expiration.
+    /// </summary>
+    private async Task<CrunchyrollEpisode?> TryGetEpisodeViaApiProxyAsync(string episodeId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var apiPath = $"/content/v2/cms/episodes/{episodeId}?locale={_locale}";
+            var json = await CdpFetchWithAuthRetryAsync(apiPath, $"episode/{episodeId}", cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(json))
+            {
+                return null;
+            }
+
+            var response = JsonSerializer.Deserialize<CrunchyrollResponse<CrunchyrollEpisode>>(json);
+            var episode = response?.Data?.FirstOrDefault();
+            if (episode != null)
+            {
+                _logger.LogInformation("[CDP Proxy] Got episode {EpisodeId}: {Title} (HasThumbnail={HasThumb})",
+                    episodeId, episode.Title,
+                    episode.Images?.Thumbnail?.Count > 0);
+                return episode;
+            }
+
+            _logger.LogDebug("[CDP Proxy] No episode data in response for {EpisodeId}", episodeId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CDP Proxy] Failed to fetch episode {EpisodeId}", episodeId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to search for series through CDP (Chrome DevTools Protocol).
+    /// This uses the real search API via Chrome, returning complete results with images.
+    /// Automatically retries once on token expiration.
+    /// </summary>
+    private async Task<List<CrunchyrollSearchItem>?> TrySearchViaApiProxyAsync(string encodedQuery, int limit, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var apiPath = $"/content/v2/discover/search?q={encodedQuery}&n={limit}&type=series&locale={_locale}";
+            var json = await CdpFetchWithAuthRetryAsync(apiPath, $"search/{HttpUtility.UrlDecode(encodedQuery)}", cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(json))
+            {
+                return null;
+            }
+
+            var response = JsonSerializer.Deserialize<CrunchyrollSearchResponse>(json);
+            if (response?.Data != null && response.Data.Count > 0)
+            {
+                var seriesResults = response.Data.FirstOrDefault(d => d.Type == "series");
+                var items = seriesResults?.Items ?? new List<CrunchyrollSearchItem>();
+                _logger.LogInformation("[CDP Proxy] Search returned {Count} results", items.Count);
+                return items;
+            }
+
+            _logger.LogDebug("[CDP Proxy] No search results in response");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CDP Proxy] Failed to search for '{Query}'", HttpUtility.UrlDecode(encodedQuery));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts season/episode data by navigating Chrome to the series page and waiting for
+    /// the SPA to render. The browser's own JavaScript loads episode data via client-side
+    /// API calls, so we just wait for the DOM to be populated and then extract the data.
+    /// This works as a last resort when both direct API and CDP proxy API calls fail.
+    /// </summary>
+    private async Task<List<CrunchyrollSeason>?> TryGetSeasonsViaDomExtractionAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        if (_flareSolverrClient == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var seriesUrl = $"{BaseUrl}/series/{seriesId}";
+            var json = await _flareSolverrClient.CdpExtractRenderedEpisodesAsync(
+                _dockerContainerName, seriesUrl, cancellationToken).ConfigureAwait(false);
+
+            if (string.IsNullOrEmpty(json))
+            {
+                _logger.LogDebug("[CDP DOM] No data from DOM extraction");
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var waitedMs = root.TryGetProperty("waitedMs", out var waitProp) ? waitProp.GetInt32() : 0;
+            var cardCount = root.TryGetProperty("cardCount", out var cardProp) ? cardProp.GetInt32() : 0;
+            _logger.LogInformation("[CDP DOM] Page rendered in {WaitMs}ms, found {CardCount} watch links", waitedMs, cardCount);
+
+            // Extract episodes from the DOM data
+            var episodes = new List<CrunchyrollEpisode>();
+            if (root.TryGetProperty("episodes", out var episodesArray))
+            {
+                int seqNum = 0;
+                foreach (var epEl in episodesArray.EnumerateArray())
+                {
+                    var ep = new CrunchyrollEpisode
+                    {
+                        Id = epEl.TryGetProperty("id", out var idProp) ? idProp.GetString() : null,
+                        Title = epEl.TryGetProperty("title", out var titleProp) ? titleProp.GetString() : null,
+                        EpisodeNumber = epEl.TryGetProperty("episodeNumber", out var numProp) ? numProp.GetString() : null,
+                        SequenceNumber = seqNum++
+                    };
+
+                    // Parse duration (e.g., "23m" → ms)
+                    if (epEl.TryGetProperty("duration", out var durProp))
+                    {
+                        var durStr = durProp.GetString();
+                        if (durStr != null)
+                        {
+                            var durMatch = System.Text.RegularExpressions.Regex.Match(durStr, @"(\d+)");
+                            if (durMatch.Success && int.TryParse(durMatch.Groups[1].Value, out var minutes))
+                            {
+                                ep.DurationMs = minutes * 60 * 1000;
+                            }
+                        }
+                    }
+
+                    // Set thumbnail if available
+                    if (epEl.TryGetProperty("thumbnail", out var thumbProp))
+                    {
+                        var thumbUrl = thumbProp.GetString();
+                        if (!string.IsNullOrEmpty(thumbUrl))
+                        {
+                            ep.Images = new CrunchyrollEpisodeImages
+                            {
+                                Thumbnail = new List<List<CrunchyrollImage>>
+                                {
+                                    new List<CrunchyrollImage>
+                                    {
+                                        new CrunchyrollImage
+                                        {
+                                            Source = thumbUrl,
+                                            Width = 640,
+                                            Height = 360,
+                                            Type = "thumbnail"
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(ep.Id))
+                    {
+                        episodes.Add(ep);
+                    }
+                }
+            }
+
+            if (episodes.Count == 0)
+            {
+                _logger.LogWarning("[CDP DOM] No episodes extracted from rendered page. SPA might not have finished loading.");
+                return null;
+            }
+
+            // Build season info from DOM data
+            string seasonId;
+            string seasonTitle;
+
+            if (root.TryGetProperty("series", out var seriesEl) &&
+                seriesEl.TryGetProperty("currentSeasonId", out var seasonIdProp) &&
+                !string.IsNullOrEmpty(seasonIdProp.GetString()))
+            {
+                seasonId = seasonIdProp.GetString()!;
+                seasonTitle = seriesEl.TryGetProperty("seasonTitle", out var stProp) ? stProp.GetString() ?? "Season 1" : "Season 1";
+            }
+            else
+            {
+                seasonId = $"{seriesId}_dom";
+                seasonTitle = "Season 1 (DOM)";
+            }
+
+            var season = new CrunchyrollSeason
+            {
+                Id = seasonId,
+                Title = seasonTitle,
+                SeasonNumber = 1,
+                SeriesId = seriesId
+            };
+
+            // Cache the episodes
+            lock (_scrapingCacheLock)
+            {
+                _scrapedEpisodesCache[seasonId] = episodes;
+            }
+
+            _logger.LogInformation("[CDP DOM] Extracted {Count} episodes for series {SeriesId} (season: {SeasonId})",
+                episodes.Count, seriesId, seasonId);
+
+            return new List<CrunchyrollSeason> { season };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CDP DOM] Failed to extract data from rendered page for series {SeriesId}", seriesId);
         }
 
         return null;

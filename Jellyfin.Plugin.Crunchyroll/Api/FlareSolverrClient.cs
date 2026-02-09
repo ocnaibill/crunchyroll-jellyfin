@@ -1196,6 +1196,136 @@ print(v)
     }
 
     /// <summary>
+    /// Navigates Chrome to a Crunchyroll series page and waits for the SPA to fully render,
+    /// then extracts episode data directly from the rendered DOM via JavaScript.
+    /// Unlike HTML scraping (which gets only placeholder skeletons), this waits for React
+    /// to hydrate and the episode cards to appear with real data.
+    /// </summary>
+    /// <param name="dockerContainerName">The Docker container name for CDP access.</param>
+    /// <param name="seriesUrl">The full URL of the series page (e.g., https://www.crunchyroll.com/series/GY8V11X7Y).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>JSON string with extracted episode data, or null if failed.</returns>
+    public async Task<string?> CdpExtractRenderedEpisodesAsync(
+        string dockerContainerName,
+        string seriesUrl,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return null;
+        }
+
+        // First, navigate to the series page via FlareSolverr (handles Cloudflare challenge)
+        _logger.LogInformation("[CDP DOM] Navigating to {Url} and waiting for SPA render...", seriesUrl);
+        var html = await GetPageContentAsync(seriesUrl, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(html))
+        {
+            _logger.LogWarning("[CDP DOM] Failed to navigate to series page");
+            return null;
+        }
+
+        // Now the Chrome tab is on the series page. The initial HTML has placeholders,
+        // but React is hydrating in the background. Use CDP to run JavaScript that
+        // waits for the real episode cards to appear, then extracts the data.
+        var jsExpression = @"(async()=>{
+            // Wait for episode cards to render (replace skeleton placeholders)
+            // The SPA loads episodes via API and renders them as <a> tags with /watch/ hrefs
+            const maxWait = 30000;
+            const interval = 500;
+            let elapsed = 0;
+            
+            while (elapsed < maxWait) {
+                // Check for real episode cards (not placeholders)
+                const cards = document.querySelectorAll('a[href*=""/watch/""]');
+                // Need more than 1 (the prologue link might already be in SSR HTML)
+                if (cards.length > 2) break;
+                
+                // Also check for the playable-card elements with actual content
+                const playableCards = document.querySelectorAll('.playable-card-static');
+                if (playableCards.length > 0) break;
+                
+                await new Promise(r => setTimeout(r, interval));
+                elapsed += interval;
+            }
+            
+            // Extract episode data from the rendered DOM
+            const episodes = [];
+            const cards = document.querySelectorAll('a[href*=""/watch/""]');
+            
+            for (const card of cards) {
+                const href = card.getAttribute('href') || '';
+                const idMatch = href.match(/\/watch\/([A-Z0-9]+)/);
+                if (!idMatch) continue;
+                
+                const ep = { id: idMatch[1] };
+                
+                // Title from various possible elements
+                const titleEl = card.querySelector('h4') || card.querySelector('[data-t=""title""]');
+                if (titleEl) ep.title = titleEl.textContent.trim();
+                
+                // Episode number
+                const metaEl = card.querySelector('[data-t=""meta""]') || card.querySelector('.text--is-m--pqiL-');
+                if (metaEl) {
+                    const metaText = metaEl.textContent.trim();
+                    const numMatch = metaText.match(/[EÉ](\d+)/i) || metaText.match(/Episode\s*(\d+)/i);
+                    if (numMatch) ep.episodeNumber = numMatch[1];
+                    ep.meta = metaText;
+                }
+                
+                // Thumbnail
+                const img = card.querySelector('img');
+                if (img) ep.thumbnail = img.src || img.getAttribute('data-src');
+                
+                // Duration
+                const durEl = card.querySelector('[data-t=""duration-info""]') || card.querySelector('.badge--2TYHP');
+                if (durEl) ep.duration = durEl.textContent.trim();
+                
+                // Avoid duplicates
+                if (!episodes.find(e => e.id === ep.id)) {
+                    episodes.push(ep);
+                }
+            }
+            
+            // Also grab series info while we're here
+            const series = {};
+            const ogTitle = document.querySelector('meta[property=""og:title""]');
+            if (ogTitle) series.title = ogTitle.content;
+            const ogImage = document.querySelector('meta[property=""og:image""]');
+            if (ogImage) series.image = ogImage.content;
+            const ogDesc = document.querySelector('meta[property=""og:description""]');
+            if (ogDesc) series.description = ogDesc.content;
+            
+            // Season info from h4 with currentseasonid
+            const h4 = document.querySelector('h4[currentseasonid]');
+            if (h4) {
+                series.currentSeasonId = h4.getAttribute('currentseasonid');
+                series.seasonTitle = h4.getAttribute('seasontitle');
+                series.seriesId = h4.getAttribute('seriesid');
+            }
+            
+            return JSON.stringify({
+                episodes: episodes,
+                series: series,
+                cardCount: cards.length,
+                waitedMs: elapsed
+            });
+        })()";
+
+        var result = await ExecuteCdpJsAsync(dockerContainerName, jsExpression, cancellationToken).ConfigureAwait(false);
+
+        if (!string.IsNullOrEmpty(result))
+        {
+            _logger.LogInformation("[CDP DOM] Extracted rendered data from series page");
+        }
+        else
+        {
+            _logger.LogWarning("[CDP DOM] Failed to extract data from rendered page");
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Escapes a string for safe use inside JavaScript single-quoted string literals.
     /// </summary>
     private static string EscapeJsString(string value)

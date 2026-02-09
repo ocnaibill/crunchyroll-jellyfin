@@ -62,7 +62,7 @@ public static partial class CrunchyrollHtmlScraper
                 }
             }
 
-            // Extract poster image
+            // Extract poster image from og:image and try to build both tall and wide variants
             var posterMatch = PosterImageRegex().Match(html);
             if (posterMatch.Success)
             {
@@ -83,6 +83,79 @@ public static partial class CrunchyrollHtmlScraper
                         }
                     }
                 };
+
+                // Try to derive PosterWide from the same CDN URL by modifying dimensions
+                // Crunchyroll CDN URLs often look like: .../full/...{hash}_full.jpg
+                // The og:image is typically the tall poster. Try to also use it for wide/backdrop.
+                series.Images.PosterWide = new List<List<CrunchyrollImage>>
+                {
+                    new List<CrunchyrollImage>
+                    {
+                        new CrunchyrollImage
+                        {
+                            Source = imageUrl,
+                            Width = 1920,
+                            Height = 1080,
+                            Type = "poster_wide"
+                        }
+                    }
+                };
+            }
+
+            // Try JSON-LD schema for additional/better image data
+            var jsonLdMatch = Regex.Match(html, @"<script[^>]*type=""application/ld\+json""[^>]*>(.*?)</script>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (jsonLdMatch.Success)
+            {
+                try
+                {
+                    var jsonLd = jsonLdMatch.Groups[1].Value.Trim();
+                    var imageMatch = Regex.Match(jsonLd, @"""image""\s*:\s*""([^""]+)""");
+                    if (imageMatch.Success)
+                    {
+                        var schemaImageUrl = imageMatch.Groups[1].Value;
+                        // JSON-LD image is usually a wide landscape image
+                        if (series.Images == null)
+                        {
+                            series.Images = new CrunchyrollImages();
+                        }
+                        // Use the schema image as a better wide poster if we have it
+                        series.Images.PosterWide = new List<List<CrunchyrollImage>>
+                        {
+                            new List<CrunchyrollImage>
+                            {
+                                new CrunchyrollImage
+                                {
+                                    Source = schemaImageUrl,
+                                    Width = 1920,
+                                    Height = 1080,
+                                    Type = "poster_wide"
+                                }
+                            }
+                        };
+                        // Also set PosterTall if we don't have one
+                        if (series.Images.PosterTall == null)
+                        {
+                            series.Images.PosterTall = new List<List<CrunchyrollImage>>
+                            {
+                                new List<CrunchyrollImage>
+                                {
+                                    new CrunchyrollImage
+                                    {
+                                        Source = schemaImageUrl,
+                                        Width = 480,
+                                        Height = 720,
+                                        Type = "poster_tall"
+                                    }
+                                }
+                            };
+                        }
+                        logger.LogDebug("Extracted JSON-LD image: {Url}", schemaImageUrl);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "Failed to extract JSON-LD image data");
+                }
             }
 
             // Extract slug title from URL if available
@@ -171,6 +244,17 @@ public static partial class CrunchyrollHtmlScraper
                 }
             }
             
+            // Pattern 4: Extract from <h4> element with seriesid/currentseasonid attributes
+            // (Modern CR SPA embeds this in the season navigation section)
+            if (seasons.Count == 0)
+            {
+                var seasonInfo = ExtractSeasonInfoFromHtml(html, logger);
+                if (seasonInfo.HasValue)
+                {
+                    seasons.Add((seasonInfo.Value.CurrentSeasonId, seasonInfo.Value.SeasonTitle, 0));
+                }
+            }
+
             logger.LogInformation("[SeasonExtract] Found {Count} seasons in HTML", seasons.Count);
             foreach (var season in seasons)
             {
@@ -266,6 +350,27 @@ public static partial class CrunchyrollHtmlScraper
             {
                 logger.LogInformation("[HTML Scraper] Strategy 5: Trying generic /watch/ link extraction...");
                 episodes = ExtractFromWatchLinks(html, logger);
+            }
+
+            // Strategy 6: If we still have no episodes but found placeholder cards,
+            // the page is a modern SPA that loads episodes via client-side JS.
+            // Log a hint so the caller (CrunchyrollApiClient) can use the season ID
+            // extracted from the HTML to call the API directly.
+            if (episodes.Count == 0 && html.Contains("playable-card-placeholder"))
+            {
+                var seasonInfo = ExtractSeasonInfoFromHtml(html, logger);
+                if (seasonInfo.HasValue)
+                {
+                    logger.LogInformation(
+                        "[HTML Scraper] Strategy 6: Page has {PlaceholderCount} loading placeholders (SPA). " +
+                        "Extracted currentSeasonId={SeasonId} from HTML. Episodes must be fetched via API.",
+                        System.Text.RegularExpressions.Regex.Matches(html, "playable-card-placeholder").Count,
+                        seasonInfo.Value.CurrentSeasonId);
+                }
+                else
+                {
+                    logger.LogWarning("[HTML Scraper] Page has loading placeholders but could not extract season info from HTML.");
+                }
             }
 
             // Log results
@@ -592,6 +697,86 @@ public static partial class CrunchyrollHtmlScraper
         }
         
         return episodes;
+    }
+
+    /// <summary>
+    /// Result of extracting season info from the Crunchyroll series page HTML.
+    /// The modern Crunchyroll SPA embeds season metadata in a &lt;h4&gt; element
+    /// even though episodes are loaded client-side via JavaScript.
+    /// </summary>
+    public struct SeasonHtmlInfo
+    {
+        public string SeriesId;
+        public string CurrentSeasonId;
+        public string SeasonTitle;
+    }
+
+    /// <summary>
+    /// Extracts season info (seriesId, currentSeasonId, seasonTitle) from the Crunchyroll
+    /// series page HTML. The modern CR frontend embeds these as attributes on an &lt;h4&gt; element
+    /// inside the season navigation section, even though actual episode data is loaded via JS.
+    /// </summary>
+    /// <param name="html">The HTML content of the series page.</param>
+    /// <param name="logger">Logger for debugging.</param>
+    /// <returns>SeasonHtmlInfo if found, null otherwise.</returns>
+    public static SeasonHtmlInfo? ExtractSeasonInfoFromHtml(string html, ILogger logger)
+    {
+        try
+        {
+            // The modern Crunchyroll page has a <h4> element with custom attributes:
+            // <h4 ... seriesid="GY8V11X7Y" seasons="[object Object]" currentseasonid="GRZX22DMY"
+            //     seasondisplaynumber="" seasontitle="Fate/stay night [Unlimited Blade Works]">
+            var match = Regex.Match(html,
+                @"<h4[^>]*\sseriesid=""([^""]+)""[^>]*\scurrentseasonid=""([^""]+)""[^>]*\sseasontitle=""([^""]+)""",
+                RegexOptions.IgnoreCase);
+
+            if (match.Success)
+            {
+                var info = new SeasonHtmlInfo
+                {
+                    SeriesId = match.Groups[1].Value,
+                    CurrentSeasonId = match.Groups[2].Value,
+                    SeasonTitle = System.Web.HttpUtility.HtmlDecode(match.Groups[3].Value)
+                };
+
+                logger.LogInformation(
+                    "[HTML Scraper] Extracted season info from <h4>: SeriesId={SeriesId}, CurrentSeasonId={SeasonId}, Title={Title}",
+                    info.SeriesId, info.CurrentSeasonId, info.SeasonTitle);
+
+                return info;
+            }
+
+            // Fallback: try matching with attributes in different order
+            var seriesIdMatch = Regex.Match(html, @"<h4[^>]*\sseriesid=""([^""]+)""", RegexOptions.IgnoreCase);
+            var seasonIdMatch = Regex.Match(html, @"<h4[^>]*\scurrentseasonid=""([^""]+)""", RegexOptions.IgnoreCase);
+            var seasonTitleMatch = Regex.Match(html, @"<h4[^>]*\sseasontitle=""([^""]+)""", RegexOptions.IgnoreCase);
+
+            if (seriesIdMatch.Success && seasonIdMatch.Success)
+            {
+                var info = new SeasonHtmlInfo
+                {
+                    SeriesId = seriesIdMatch.Groups[1].Value,
+                    CurrentSeasonId = seasonIdMatch.Groups[1].Value,
+                    SeasonTitle = seasonTitleMatch.Success
+                        ? System.Web.HttpUtility.HtmlDecode(seasonTitleMatch.Groups[1].Value)
+                        : "Season 1"
+                };
+
+                logger.LogInformation(
+                    "[HTML Scraper] Extracted season info (fallback): SeriesId={SeriesId}, CurrentSeasonId={SeasonId}, Title={Title}",
+                    info.SeriesId, info.CurrentSeasonId, info.SeasonTitle);
+
+                return info;
+            }
+
+            logger.LogDebug("[HTML Scraper] No season info found in HTML <h4> element");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[HTML Scraper] Error extracting season info from HTML");
+        }
+
+        return null;
     }
 
     /// <summary>

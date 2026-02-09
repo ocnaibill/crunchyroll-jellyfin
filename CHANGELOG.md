@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.2.0.0] - 2026-02-09
+
+### 🚀 New Features
+
+- **Token auto-renewal**: CDP proxy now automatically retries once on `invalid_auth_token` / `unauthorized` — re-authenticates with a fresh token instead of failing permanently. Token expiration is now "when, not if" safe.
+- **`CdpFetchWithAuthRetryAsync` helper**: Centralized all CDP proxy logic (auth → fetch → retry) into a single method. All 5 CDP proxy methods (`seasons`, `episodes`, `series`, `episode`, `search`) now delegate to it, reducing ~200 lines of duplicated code.
+- **CDP DOM extraction fallback**: When both direct API and CDP proxy API fail, the plugin navigates Chrome to the series page, waits up to 30s for React to render episode cards, and extracts data from the rendered DOM via JavaScript.
+- **Full image pipeline**: Series images (PosterTall up to 1560×2340, PosterWide up to 1920×1080) and episode thumbnails now work reliably via CDP proxy.
+- **CDP proxy for all endpoints**: Added CDP proxy fallbacks for `GetSeriesAsync`, `GetEpisodeAsync`, and `SearchSeriesAsync` — previously these had no fallback in scraping mode.
+
+### 🐛 Bug Fixes
+
+- **Episode thumbnails were missing**: `GetEpisodeAsync` returned `null` in scraping mode with no fallback — now uses CDP proxy.
+- **Search had no CDP fallback**: `SearchSeriesAsync` now tries CDP proxy before falling back to HTML scraping.
+- **HTML scraping demoted**: Modern Crunchyroll is a React SPA that renders only CSS skeleton placeholders — HTML scraping is now last resort with explicit warning log.
+
+### 🏗️ Architecture
+
+- Simplified all 5 CDP proxy methods from ~50 lines each to ~15 lines by extracting common auth+fetch+retry pattern
+- 3-layer fallback architecture: Direct API → CDP Proxy (with auto-retry) → CDP DOM Extraction
+- Token lifecycle: proactive expiration check + reactive retry on rejection + 60s safety buffer
+
+### 👥 Contributors
+
+- **@Gishky** (PR #7): Task progress logging for `ClearCrunchyrollIDsTask` — shows percentage, updated/skipped counts in server log for large libraries
+
 ## [2.1.0.0] - 2026-02-07
 
 ### 🚀 New Features
