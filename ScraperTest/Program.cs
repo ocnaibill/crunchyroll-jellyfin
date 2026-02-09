@@ -126,12 +126,13 @@ class ScraperTest
             }
         }
         
-        // Test 5: Full pipeline — when HTML has only placeholders, use extracted season ID
-        // to fetch episodes from the Crunchyroll API (same as the plugin does via CDP proxy)
+        // Test 5: Full pipeline — use series ID to fetch everything from the API.
+        // The season ID from HTML is optional — the API can list all seasons from the series ID.
         int apiEpisodeCount = 0;
-        if (seasonInfo.HasValue)
         {
+            var effectiveSeriesId = seasonInfo?.SeriesId ?? seriesId;
             Console.WriteLine("\n--- Full Pipeline: API Episode Fetch ---");
+            Console.WriteLine($"  Series ID: {effectiveSeriesId}{(seasonInfo.HasValue ? " (from HTML)" : " (from argument)")}");
             Console.WriteLine($"  Authenticating with Crunchyroll API (anonymous)...");
             
             var token = await GetAnonymousTokenAsync(flareSolverrUrl, logger);
@@ -140,9 +141,9 @@ class ScraperTest
                 Console.WriteLine($"  ✅ Got access token");
                 
                 // Fetch series details (includes full image data)
-                Console.WriteLine($"\n  Fetching series details for {seasonInfo.Value.SeriesId}...");
+                Console.WriteLine($"\n  Fetching series details for {effectiveSeriesId}...");
                 var apiSeries = await FetchApiJsonAsync<Jellyfin.Plugin.Crunchyroll.Models.CrunchyrollResponse<Jellyfin.Plugin.Crunchyroll.Models.CrunchyrollSeries>>(
-                    $"https://www.crunchyroll.com/content/v2/cms/series/{seasonInfo.Value.SeriesId}?locale=pt-BR",
+                    $"https://www.crunchyroll.com/content/v2/cms/series/{effectiveSeriesId}?locale=pt-BR",
                     token, flareSolverrUrl, logger);
                 
                 var apiSeriesData = apiSeries?.Data?.FirstOrDefault();
@@ -164,9 +165,9 @@ class ScraperTest
                 }
                 
                 // Fetch seasons for the series
-                Console.WriteLine($"\n  Fetching seasons for series {seasonInfo.Value.SeriesId}...");
+                Console.WriteLine($"\n  Fetching seasons for series {effectiveSeriesId}...");
                 var apiSeasons = await FetchApiJsonAsync<Jellyfin.Plugin.Crunchyroll.Models.CrunchyrollResponse<Jellyfin.Plugin.Crunchyroll.Models.CrunchyrollSeason>>(
-                    $"https://www.crunchyroll.com/content/v2/cms/series/{seasonInfo.Value.SeriesId}/seasons?locale=pt-BR",
+                    $"https://www.crunchyroll.com/content/v2/cms/series/{effectiveSeriesId}/seasons?locale=pt-BR",
                     token, flareSolverrUrl, logger);
                 
                 if (apiSeasons?.Data != null && apiSeasons.Data.Count > 0)
