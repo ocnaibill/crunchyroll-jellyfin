@@ -58,7 +58,10 @@ public class ClearCrunchyrollIDsTask : IScheduledTask
                 await SaveItemAsync(item, cancellationToken);
                 updated++;
             }
-
+            if(((i + 1) * 100.0 / total) % 5 == 0)
+            {
+                _logger.LogInformation("Progress: {Progress}% ({Updated}/{Total})", (i + 1) * 100.0 / total, updated, total);
+            }
             progress.Report(total == 0 ? 100 : (i + 1) * 100.0 / total);
         }
 
