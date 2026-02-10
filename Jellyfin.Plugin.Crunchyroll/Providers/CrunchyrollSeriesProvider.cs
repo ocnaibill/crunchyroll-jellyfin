@@ -297,13 +297,11 @@ public class CrunchyrollSeriesProvider : IRemoteMetadataProvider<Series, SeriesI
         var searchWords = search.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var candidateWords = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var matchingWords = searchWords.Intersect(candidateWords).Count();
-        searchWords = searchWords.Except(candidateWords).ToArray();
-        candidateWords = candidateWords.Except(searchWords).ToArray();
 
         var similarwords = 0;
-        foreach(var word in searchWords)
+        foreach(var word in searchWords.Except(candidateWords).ToArray())
         {
-            foreach(var cword in candidateWords)
+            foreach(var cword in candidateWords.Except(searchWords).ToArray())
             {
                 if(cword.Contains(word) || word.Contains(cword))
                 {
