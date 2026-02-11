@@ -10,8 +10,8 @@
       {
         "version": "2.2.0.1",
         "changelog": "Fix SeasonSequenceNumber=0 mapping bug. Series like Lord El-Melloi II where Crunchyroll returns SeasonSequenceNumber=0 for the main season were incorrectly mapped to Jellyfin S0 (Specials). Now correctly bumps to S1 with collision detection. Season provider also skips false Special matches when a SeqNum=0 main season exists.",
-        "checksum": "",
-        "timestamp": "2026-02-11T13:30:00Z",
+        "checksum": "b55a1bb8e4014cb484f39cd9406bbb0b",
+        "timestamp": "2026-02-11T13:17:47Z",
         "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.2.0.1/Jellyfin.Plugin.Crunchyroll.zip"
       },
       {
