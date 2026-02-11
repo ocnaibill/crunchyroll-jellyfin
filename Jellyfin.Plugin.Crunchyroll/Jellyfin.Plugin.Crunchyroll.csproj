@@ -4,10 +4,10 @@
     <TargetFramework>net8.0</TargetFramework>
     
     <!-- Plugin Version - Overridden by CI from Git tag -->
-    <Version>2.2.0.1</Version>
-    <AssemblyVersion>2.2.0.1</AssemblyVersion>
-    <FileVersion>2.2.0.1</FileVersion>
-    <InformationalVersion>2.2.0.1</InformationalVersion>
+    <Version>2.2.0.2</Version>
+    <AssemblyVersion>2.2.0.2</AssemblyVersion>
+    <FileVersion>2.2.0.2</FileVersion>
+    <InformationalVersion>2.2.0.2</InformationalVersion>
     
     <!-- Plugin Metadata -->
     <Authors>ocnaibill</Authors>

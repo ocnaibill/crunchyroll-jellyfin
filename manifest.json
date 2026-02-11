@@ -8,6 +8,13 @@
     "category": "Metadata Provider",
     "versions": [
       {
+        "version": "2.2.0.2",
+        "changelog": "Fix series matching score bug (PR #8 by @Gishky). CalculateMatchScore had a sequential mutation bug where searchWords was filtered before being used to filter candidateWords, causing inflated scores and incorrect series matches.",
+        "checksum": "",
+        "timestamp": "2026-02-11T18:00:00Z",
+        "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.2.0.2/Jellyfin.Plugin.Crunchyroll.zip"
+      },
+      {
         "version": "2.2.0.1",
         "changelog": "Fix SeasonSequenceNumber=0 mapping bug. Series like Lord El-Melloi II where Crunchyroll returns SeasonSequenceNumber=0 for the main season were incorrectly mapped to Jellyfin S0 (Specials). Now correctly bumps to S1 with collision detection. Season provider also skips false Special matches when a SeqNum=0 main season exists.",
         "checksum": "b55a1bb8e4014cb484f39cd9406bbb0b",
