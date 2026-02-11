@@ -10,8 +10,8 @@
       {
         "version": "2.3.0.0",
         "changelog": "NEW: Movie library support! Crunchyroll now provides metadata for anime movies. Uses a multi-level matching algorithm (L1-Direct, L2-Cascade with distinctive word scoring, L1-Fallback) to handle all three film patterns on Crunchyroll: standalone films, films as seasons inside parent anime, and film collections. Also improved NormalizeName to handle slashes, Unicode dashes, and parentheses in series/movie titles.",
-        "checksum": "",
-        "timestamp": "2026-02-11T22:00:00Z",
+        "checksum": "2d619d23586d9fda812a5e1ed4c182b2",
+        "timestamp": "2026-02-11T15:15:07Z",
         "sourceUrl": "https://github.com/ocnaibill/crunchyroll-jellyfin/releases/download/v2.3.0.0/Jellyfin.Plugin.Crunchyroll.zip"
       },
       {
