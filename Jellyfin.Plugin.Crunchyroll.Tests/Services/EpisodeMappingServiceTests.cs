@@ -435,6 +435,71 @@ public class EpisodeMappingServiceTests
     }
 
     /// <summary>
+    /// Portuguese Crunchyroll uses the ordinal form "3ª Temporada" (digit before
+    /// the word). It must map to Jellyfin S3 instead of falling back to the raw
+    /// SeasonSequenceNumber (which is 5 because of a movie in between).
+    /// </summary>
+    [Fact]
+    public void CalculateSeasonMapping_PortugueseOrdinalSeasonTitle_ShouldMapToSeason3()
+    {
+        // Arrange - JUJUTSU KAISEN structure: S1, S2, Movie, "3ª Temporada" (seq 5)
+        var seasons = new List<CrunchyrollSeason>
+        {
+            new CrunchyrollSeason
+            {
+                Id = "GR_S1",
+                Title = "JUJUTSU KAISEN",
+                SeasonNumber = 1,
+                SeasonSequenceNumber = 1,
+                NumberOfEpisodes = 24
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR_S2",
+                Title = "JUJUTSU KAISEN Season 2",
+                SeasonNumber = 2,
+                SeasonSequenceNumber = 2,
+                NumberOfEpisodes = 23
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR_MOVIE",
+                Title = "JUJUTSU KAISEN: The Movie",
+                SeasonNumber = 3,
+                SeasonSequenceNumber = 3,
+                NumberOfEpisodes = 1
+            },
+            new CrunchyrollSeason
+            {
+                Id = "GR_S3",
+                Title = "3ª Temporada",
+                SeasonNumber = 5,
+                SeasonSequenceNumber = 5,
+                NumberOfEpisodes = 12
+            }
+        };
+
+        var allEpisodes = new Dictionary<string, List<CrunchyrollEpisode>>
+        {
+            ["GR_S1"] = CreateEpisodeList(1, 24),
+            ["GR_S2"] = CreateEpisodeList(25, 23),
+            ["GR_MOVIE"] = CreateEpisodeList(1, 1),
+            ["GR_S3"] = CreateEpisodeList(48, 12)
+        };
+
+        // Act
+        var result = _service.CalculateSeasonMapping("GRDV0019R", seasons, allEpisodes);
+
+        // Assert
+        var season3 = result.Seasons.Single(s => s.JellyfinSeasonNumber == 3);
+        season3.CrunchyrollSeasonId.Should().Be("GR_S3");
+        season3.EpisodeOffset.Should().Be(47); // Crunchyroll S3 starts at episode 48
+
+        result.Seasons.Should().NotContain(s => s.JellyfinSeasonNumber == 5);
+        result.Seasons.Should().Contain(s => s.JellyfinSeasonNumber == 0 && s.CrunchyrollSeasonId == "GR_MOVIE");
+    }
+
+    /// <summary>
     /// Helper method to create a list of episodes for testing.
     /// </summary>
     private static List<CrunchyrollEpisode> CreateEpisodeList(int startingEpisode, int count)

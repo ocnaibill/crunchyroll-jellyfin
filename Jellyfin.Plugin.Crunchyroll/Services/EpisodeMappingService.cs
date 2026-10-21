@@ -95,16 +95,26 @@ public class EpisodeMappingService
             // to avoid collisions when there are two regular seasons (SeqNum=0 and SeqNum=1).
             int jellyfinSeasonNum = season.SeasonSequenceNumber;
 
-            // NEW: Try to extract the true season number from the Title (e.g., "Season 3", "Temporada 3")
+            // NEW: Try to extract the true season number from the Title.
+            // Handles both "Season 3"/"Temporada 3" and the Portuguese ordinal
+            // form "3ª Temporada" (digit before the word).
             if (!string.IsNullOrEmpty(season.Title))
             {
-                var titleMatch = System.Text.RegularExpressions.Regex.Match(season.Title, @"(?i)(?:season|temporada)\s*(\d+)\b");
-                if (titleMatch.Success && int.TryParse(titleMatch.Groups[1].Value, out int extractedSeason))
+                var titleMatch = System.Text.RegularExpressions.Regex.Match(
+                    season.Title,
+                    @"(?i)(?:season|temporada)\s*(?<after>\d+)\b|(?<before>\d+)\s*[ªº°]?\s*(?:season|temporada)\b");
+                if (titleMatch.Success)
                 {
-                    jellyfinSeasonNum = extractedSeason;
-                    _logger.LogDebug(
-                        "Season '{Title}' matched regex, overriding Jellyfin season number from {Original} to {Extracted}",
-                        season.Title, season.SeasonSequenceNumber, extractedSeason);
+                    var digits = titleMatch.Groups["after"].Success
+                        ? titleMatch.Groups["after"].Value
+                        : titleMatch.Groups["before"].Value;
+                    if (int.TryParse(digits, out int extractedSeason))
+                    {
+                        jellyfinSeasonNum = extractedSeason;
+                        _logger.LogDebug(
+                            "Season '{Title}' matched regex, overriding Jellyfin season number from {Original} to {Extracted}",
+                            season.Title, season.SeasonSequenceNumber, extractedSeason);
+                    }
                 }
                 else if (season.Title.Contains("Culling", StringComparison.OrdinalIgnoreCase) || season.Title.Contains("Jogo do Abate", StringComparison.OrdinalIgnoreCase))
                 {
