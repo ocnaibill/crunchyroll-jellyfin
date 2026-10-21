@@ -57,10 +57,16 @@ public class FlareSolverrClient : IDisposable
     /// </summary>
     public bool HasDirectCdp => !string.IsNullOrWhiteSpace(_chromeCdpUrl);
 
-    // Track whether we have an active FlareSolverr session keeping Chrome alive for CDP
+    // Track whether we have an active FlareSolverr session keeping Chrome alive for CDP.
+    // The session is SHARED (static) across all FlareSolverrClient instances, so its
+    // lifetime is reference-counted: only the last live instance destroys it. This
+    // prevents one provider being disposed (e.g. after a parallel scan) from killing
+    // the browser another provider is still using.
     private static bool _cdpSessionActive;
     private static string? _cdpSessionId;
     private static readonly SemaphoreSlim _cdpSessionLock = new(1, 1);
+    private static int _cdpSessionRefCount;
+    private bool _ownsCdpSessionRef;
 
     /// <summary>
     /// Ensures Chrome is running inside FlareSolverr by creating a persistent session.
@@ -70,7 +76,7 @@ public class FlareSolverrClient : IDisposable
     /// </summary>
     private async Task EnsureBrowserAliveAsync(CancellationToken cancellationToken)
     {
-        if (_cdpSessionActive && _cdpSessionId != null)
+        if (_ownsCdpSessionRef && _cdpSessionActive && _cdpSessionId != null)
         {
             return; // Session already exists, Chrome should be running
         }
@@ -78,36 +84,42 @@ public class FlareSolverrClient : IDisposable
         await _cdpSessionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_cdpSessionActive && _cdpSessionId != null)
+            if (!(_cdpSessionActive && _cdpSessionId != null))
             {
-                return; // Double-check after lock
+                _cdpSessionId = $"cdp_{Guid.NewGuid():N}"[..16];
+                _logger.LogInformation("[CDP Session] Creating FlareSolverr session '{SessionId}' to keep Chrome alive...", _cdpSessionId);
+
+                // Create session by making a request with session parameter.
+                // This starts Chrome and keeps it alive for the duration of the session.
+                var request = new FlareSolverrRequest
+                {
+                    Cmd = "request.get",
+                    Url = "https://www.crunchyroll.com/",
+                    Session = _cdpSessionId,
+                    MaxTimeout = 60000,
+                    Wait = 5000
+                };
+
+                var response = await _httpClient.PostAsJsonAsync(
+                    $"{_flareSolverrUrl}/v1", request, cancellationToken).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _cdpSessionActive = true;
+                    _logger.LogInformation("[CDP Session] Session created. Chrome is now running and on crunchyroll.com.");
+                }
+                else
+                {
+                    _logger.LogWarning("[CDP Session] Failed to create session: HTTP {StatusCode}", response.StatusCode);
+                }
             }
 
-            _cdpSessionId = $"cdp_{Guid.NewGuid():N}"[..16];
-            _logger.LogInformation("[CDP Session] Creating FlareSolverr session '{SessionId}' to keep Chrome alive...", _cdpSessionId);
-
-            // Create session by making a request with session parameter.
-            // This starts Chrome and keeps it alive for the duration of the session.
-            var request = new FlareSolverrRequest
+            // Register this instance as a user of the shared static session,
+            // so disposal only destroys the session once ALL users are gone.
+            if (_cdpSessionActive && !_ownsCdpSessionRef)
             {
-                Cmd = "request.get",
-                Url = "https://www.crunchyroll.com/",
-                Session = _cdpSessionId,
-                MaxTimeout = 60000,
-                Wait = 5000
-            };
-
-            var response = await _httpClient.PostAsJsonAsync(
-                $"{_flareSolverrUrl}/v1", request, cancellationToken).ConfigureAwait(false);
-
-            if (response.IsSuccessStatusCode)
-            {
-                _cdpSessionActive = true;
-                _logger.LogInformation("[CDP Session] Session created. Chrome is now running and on crunchyroll.com.");
-            }
-            else
-            {
-                _logger.LogWarning("[CDP Session] Failed to create session: HTTP {StatusCode}", response.StatusCode);
+                _cdpSessionRefCount++;
+                _ownsCdpSessionRef = true;
             }
         }
         catch (Exception ex)
@@ -1361,8 +1373,31 @@ print(v)
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var token = cts.Token;
 
+        // Release this instance's reference to the shared CDP session and destroy
+        // it only when the last user releases it — otherwise a disposed client
+        // would tear down the browser other clients are still using.
+        var shouldDestroyCdpSession = false;
+        if (_ownsCdpSessionRef)
+        {
+            _cdpSessionLock.Wait(CancellationToken.None);
+            try
+            {
+                _ownsCdpSessionRef = false;
+                _cdpSessionRefCount--;
+                if (_cdpSessionRefCount <= 0)
+                {
+                    _cdpSessionRefCount = 0;
+                    shouldDestroyCdpSession = true;
+                }
+            }
+            finally
+            {
+                _cdpSessionLock.Release();
+            }
+        }
+
         // Destroy the CDP session (keeps Chrome alive for CDP operations)
-        if (_cdpSessionId != null)
+        if (shouldDestroyCdpSession && _cdpSessionId != null)
         {
             try
             {
@@ -1433,8 +1468,10 @@ print(v)
 
         if (disposing)
         {
-            // Try to clean up sessions before disposing HttpClient
-            if (_sessionId != null || _cdpSessionId != null)
+            // Try to clean up sessions before disposing HttpClient.
+            // Only sessions actually used/owned by THIS instance are touched;
+            // the shared CDP session survives as long as other clients reference it.
+            if (_sessionId != null || _ownsCdpSessionRef)
             {
                 try
                 {

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Web;
 using Jellyfin.Plugin.Crunchyroll.Models;
 using Microsoft.Extensions.Logging;
@@ -50,12 +51,62 @@ public class CrunchyrollApiClient : IDisposable
     private static readonly TimeSpan MinAuthInterval = TimeSpan.FromSeconds(10);
     private static readonly Random _random = new Random();
     
-    // Static API response caches (shared across all instances to reduce API calls)
-    private static readonly Dictionary<string, List<CrunchyrollSeason>> _apiSeasonsCache = new();
-    private static readonly Dictionary<string, List<CrunchyrollEpisode>> _apiEpisodesCache = new();
+    // Static API response caches (shared across all instances to reduce API calls).
+    // Each entry carries its own expiration — previously a single shared timestamp
+    // meant that adding one entry refreshed the lifetime of ALL cached entries,
+    // so newly aired episodes could stay hidden indefinitely.
+    // Keys include the locale so metadata in one language is never served to
+    // requests made in another language.
+    private static readonly Dictionary<string, CacheEntry<List<CrunchyrollSeason>>> _apiSeasonsCache = new();
+    private static readonly Dictionary<string, CacheEntry<List<CrunchyrollEpisode>>> _apiEpisodesCache = new();
     private static readonly object _apiCacheLock = new();
-    private static DateTime _apiCacheExpiration = DateTime.MinValue;
     private static readonly TimeSpan ApiCacheDuration = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// A cache entry with its own expiration timestamp.
+    /// </summary>
+    private sealed class CacheEntry<T>
+    {
+        public required T Value { get; init; }
+
+        public DateTime ExpiresAt { get; init; }
+    }
+
+    /// <summary>
+    /// Builds a cache key scoped by cache type and the instance's locale.
+    /// </summary>
+    private string CacheKey(string scope, string id) => string.Concat(scope, ":", _locale, ":", id);
+
+    /// <summary>
+    /// Tries to get a valid (non-expired) value from a cache. Expired entries are removed.
+    /// Callers must hold the cache's lock.
+    /// </summary>
+    private static bool TryGetCached<T>(Dictionary<string, CacheEntry<T>> cache, string key, out T value)
+    {
+        value = default!;
+
+        if (!cache.TryGetValue(key, out var entry))
+        {
+            return false;
+        }
+
+        if (DateTime.UtcNow >= entry.ExpiresAt)
+        {
+            cache.Remove(key);
+            return false;
+        }
+
+        value = entry.Value;
+        return true;
+    }
+
+    /// <summary>
+    /// Stores a value in a cache with its own expiration. Callers must hold the cache's lock.
+    /// </summary>
+    private static void SetCached<T>(Dictionary<string, CacheEntry<T>> cache, string key, T value, TimeSpan duration)
+    {
+        cache[key] = new CacheEntry<T> { Value = value, ExpiresAt = DateTime.UtcNow.Add(duration) };
+    }
 
     // Browser-based authentication token (obtained via FlareSolverr, bypasses Cloudflare)
     private static string? _browserAccessToken;
@@ -277,6 +328,24 @@ public class CrunchyrollApiClient : IDisposable
                         _logger.LogWarning("Cloudflare block detected but FlareSolverr URL is not configured. Please configure FlareSolverr URL in the plugin settings to enable fallback.");
                     }
                     
+                    return false;
+                }
+
+                // 401 with invalid_client/client_inactive means Crunchyroll rejected this
+                // plugin's embedded OAuth client credentials — NOT the user's password.
+                // The CDP-proxy auth call reuses the same client token and will also be
+                // rejected, but DOM extraction (reading the rendered page, no API client
+                // involved) does not depend on it, so we still switch to scraping mode
+                // instead of giving up outright.
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+                    (errorContent.Contains("invalid_client") || errorContent.Contains("client_inactive")))
+                {
+                    _logger.LogError(
+                        "Crunchyroll rejected the plugin's OAuth client (status 401, invalid_client/client_inactive). " +
+                        "This is NOT a username/password problem: the embedded client credentials are no longer accepted by Crunchyroll " +
+                        "and must be updated in the plugin. Falling back to DOM scraping. Response: {Error}",
+                        errorContent.Length > 300 ? errorContent[..300] : errorContent);
+                    _useScrapingMode = true;
                     return false;
                 }
 
@@ -575,10 +644,12 @@ public class CrunchyrollApiClient : IDisposable
         }
     }
 
-    // Static scraping caches (shared across all instances to avoid redundant FlareSolverr requests)
-    private static readonly Dictionary<string, List<CrunchyrollEpisode>> _scrapedEpisodesCache = new();
-    private static readonly Dictionary<string, List<CrunchyrollSeason>> _scrapedSeasonsCache = new();
+    // Static scraping caches (shared across all instances to avoid redundant FlareSolverr requests).
+    // These previously had NO expiration at all, so stale episode lists could be served forever.
+    private static readonly Dictionary<string, CacheEntry<List<CrunchyrollEpisode>>> _scrapedEpisodesCache = new();
+    private static readonly Dictionary<string, CacheEntry<List<CrunchyrollSeason>>> _scrapedSeasonsCache = new();
     private static readonly object _scrapingCacheLock = new();
+    private static readonly TimeSpan ScrapingCacheDuration = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// Gets all seasons for a series.
@@ -596,8 +667,7 @@ public class CrunchyrollApiClient : IDisposable
                 // Check API cache first (thread-safe)
                 lock (_apiCacheLock)
                 {
-                    if (DateTime.UtcNow < _apiCacheExpiration && 
-                        _apiSeasonsCache.TryGetValue(seriesId, out var cachedSeasons) && 
+                    if (TryGetCached(_apiSeasonsCache, CacheKey("api", seriesId), out var cachedSeasons) &&
                         cachedSeasons.Count > 0)
                     {
                         _logger.LogDebug("[API Cache] Hit for seasons of series {SeriesId}", seriesId);
@@ -617,8 +687,7 @@ public class CrunchyrollApiClient : IDisposable
                 {
                     lock (_apiCacheLock)
                     {
-                        _apiSeasonsCache[seriesId] = response.Data;
-                        _apiCacheExpiration = DateTime.UtcNow.Add(ApiCacheDuration);
+                        SetCached(_apiSeasonsCache, CacheKey("api", seriesId), response.Data, ApiCacheDuration);
                     }
                     _logger.LogDebug("[API Cache] Stored {Count} seasons for series {SeriesId}", response.Data.Count, seriesId);
                     return response.Data;
@@ -637,7 +706,7 @@ public class CrunchyrollApiClient : IDisposable
                 // Check cache first (thread-safe)
                 lock (_scrapingCacheLock)
                 {
-                    if (_scrapedSeasonsCache.TryGetValue(seriesId, out var cachedSeasons) && cachedSeasons.Count > 0)
+                    if (TryGetCached(_scrapedSeasonsCache, CacheKey("scrape", seriesId), out var cachedSeasons) && cachedSeasons.Count > 0)
                     {
                         _logger.LogDebug("[Cache] Hit for seasons of series {SeriesId}, returning {Count} seasons", seriesId, cachedSeasons.Count);
                         return cachedSeasons;
@@ -651,7 +720,7 @@ public class CrunchyrollApiClient : IDisposable
                 {
                     lock (_scrapingCacheLock)
                     {
-                        _scrapedSeasonsCache[seriesId] = apiProxySeasonsResult;
+                        SetCached(_scrapedSeasonsCache, CacheKey("scrape", seriesId), apiProxySeasonsResult, ScrapingCacheDuration);
                     }
                     return apiProxySeasonsResult;
                 }
@@ -666,7 +735,7 @@ public class CrunchyrollApiClient : IDisposable
                 {
                     lock (_scrapingCacheLock)
                     {
-                        _scrapedSeasonsCache[seriesId] = domResult;
+                        SetCached(_scrapedSeasonsCache, CacheKey("scrape", seriesId), domResult, ScrapingCacheDuration);
                     }
                     return domResult;
                 }
@@ -699,7 +768,7 @@ public class CrunchyrollApiClient : IDisposable
             {
                 lock (_scrapingCacheLock)
                 {
-                    if (_scrapedEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes))
+                    if (TryGetCached(_scrapedEpisodesCache, CacheKey("scrape", seasonId), out var cachedEpisodes))
                     {
                         _logger.LogInformation("[Scraping Cache] Hit for episodes of season {SeasonId}, returning {Count} episodes", seasonId, cachedEpisodes.Count);
                         return cachedEpisodes;
@@ -715,7 +784,7 @@ public class CrunchyrollApiClient : IDisposable
                     {
                         lock (_scrapingCacheLock)
                         {
-                            _scrapedEpisodesCache[seasonId] = proxyResult;
+                            SetCached(_scrapedEpisodesCache, CacheKey("scrape", seasonId), proxyResult, ScrapingCacheDuration);
                         }
                         _logger.LogInformation("[CDP Proxy] Got {Count} episodes for season {SeasonId}", proxyResult.Count, seasonId);
                         return proxyResult;
@@ -729,8 +798,7 @@ public class CrunchyrollApiClient : IDisposable
             // Check API cache first (thread-safe)
             lock (_apiCacheLock)
             {
-                if (DateTime.UtcNow < _apiCacheExpiration && 
-                    _apiEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes) && 
+                if (TryGetCached(_apiEpisodesCache, CacheKey("api", seasonId), out var cachedEpisodes) &&
                     cachedEpisodes.Count > 0)
                 {
                     _logger.LogDebug("[API Cache] Hit for episodes of season {SeasonId}", seasonId);
@@ -749,8 +817,7 @@ public class CrunchyrollApiClient : IDisposable
             {
                 lock (_apiCacheLock)
                 {
-                    _apiEpisodesCache[seasonId] = response.Data;
-                    _apiCacheExpiration = DateTime.UtcNow.Add(ApiCacheDuration);
+                    SetCached(_apiEpisodesCache, CacheKey("api", seasonId), response.Data, ApiCacheDuration);
                 }
                 _logger.LogDebug("[API Cache] Stored {Count} episodes for season {SeasonId}", response.Data.Count, seasonId);
                 return response.Data;
@@ -764,15 +831,15 @@ public class CrunchyrollApiClient : IDisposable
                 {
                     lock (_apiCacheLock)
                     {
-                        _apiEpisodesCache[seasonId] = proxyResult;
+                        SetCached(_apiEpisodesCache, CacheKey("api", seasonId), proxyResult, ApiCacheDuration);
                     }
                     return proxyResult;
                 }
-                
+
                 // Also check scraping cache as last resort
                 lock (_scrapingCacheLock)
                 {
-                    if (_scrapedEpisodesCache.TryGetValue(seasonId, out var cachedEpisodes))
+                    if (TryGetCached(_scrapedEpisodesCache, CacheKey("scrape", seasonId), out var cachedEpisodes))
                     {
                         _logger.LogInformation("[Scraping Cache] Hit for episodes of season {SeasonId}", seasonId);
                         return cachedEpisodes;
@@ -1393,7 +1460,7 @@ public class CrunchyrollApiClient : IDisposable
             // Cache the episodes
             lock (_scrapingCacheLock)
             {
-                _scrapedEpisodesCache[seasonId] = episodes;
+                SetCached(_scrapedEpisodesCache, CacheKey("scrape", seasonId), episodes, ScrapingCacheDuration);
             }
 
             _logger.LogInformation("[CDP DOM] Extracted {Count} episodes for series {SeriesId} (season: {SeasonId})",
@@ -1519,5 +1586,11 @@ public class CrunchyrollSearchResponse
     /// <summary>
     /// Gets or sets the search result data.
     /// </summary>
+    /// <remarks>
+    /// The explicit property name is required because the CDP code path uses
+    /// <see cref="JsonSerializer"/> with default (case-sensitive) options, so a
+    /// plain "Data" property would never bind to the API's "data" field.
+    /// </remarks>
+    [JsonPropertyName("data")]
     public List<CrunchyrollSearchResult>? Data { get; set; }
 }

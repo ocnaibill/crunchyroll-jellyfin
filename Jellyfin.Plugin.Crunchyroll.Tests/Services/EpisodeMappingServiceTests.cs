@@ -308,6 +308,133 @@ public class EpisodeMappingServiceTests
     }
 
     /// <summary>
+    /// Regression test: a season whose title merely CONTAINS an OVA-keyword substring
+    /// (e.g. "Overload" contains "oad") must NOT be classified as a special.
+    /// </summary>
+    [Theory]
+    [InlineData("Overload")]
+    [InlineData("Road to Ninja")] // contains "oad" inside "road"
+    [InlineData("Nova Season")]  // contains "ova" inside "nova"
+    public void CalculateSeasonMapping_TitleWithKeywordSubstring_ShouldNotMapToSpecials(string seasonTitle)
+    {
+        // Arrange
+        var seasons = new List<CrunchyrollSeason>
+        {
+            new CrunchyrollSeason
+            {
+                Id = "GXJHM3SUB_S1",
+                Title = seasonTitle,
+                SeasonNumber = 1,
+                SeasonSequenceNumber = 1,
+                NumberOfEpisodes = 13,
+                AudioLocales = new List<string> { "ja-JP" }
+            }
+        };
+
+        var allEpisodes = new Dictionary<string, List<CrunchyrollEpisode>>
+        {
+            ["GXJHM3SUB_S1"] = CreateEpisodeList(1, 13)
+        };
+
+        // Act
+        var result = _service.CalculateSeasonMapping("GXJHM3SUB", seasons, allEpisodes);
+
+        // Assert
+        var entry = result.Seasons.Should().ContainSingle().Subject;
+        entry.JellyfinSeasonNumber.Should().BeGreaterThan(0,
+            $"'{seasonTitle}' contains an OVA keyword only as a substring and must not map to S0 (Specials)");
+    }
+
+    /// <summary>
+    /// Real special keywords as whole words must still be detected.
+    /// </summary>
+    [Theory]
+    [InlineData("Attack on Titan OADs")]
+    [InlineData("Mob Psycho 100 OVA")]
+    [InlineData("One Punch Man Specials")]
+    public void CalculateSeasonMapping_TitleWithSpecialKeyword_ShouldMapToSpecials(string seasonTitle)
+    {
+        // Arrange
+        var seasons = new List<CrunchyrollSeason>
+        {
+            new CrunchyrollSeason
+            {
+                Id = "GR_SPECIAL",
+                Title = seasonTitle,
+                SeasonNumber = 1,
+                SeasonSequenceNumber = 5,
+                NumberOfEpisodes = 6,
+                AudioLocales = new List<string> { "ja-JP" }
+            }
+        };
+
+        var allEpisodes = new Dictionary<string, List<CrunchyrollEpisode>>
+        {
+            ["GR_SPECIAL"] = CreateEpisodeList(1, 6)
+        };
+
+        // Act
+        var result = _service.CalculateSeasonMapping("GRTITLE", seasons, allEpisodes);
+
+        // Assert
+        var entry = result.Seasons.Should().ContainSingle().Subject;
+        entry.JellyfinSeasonNumber.Should().Be(0,
+            $"'{seasonTitle}' contains a special keyword as a whole word and should map to S0 (Specials)");
+    }
+
+    /// <summary>
+    /// When several Crunchyroll seasons map to the same Jellyfin season (e.g. two
+    /// specials both in S0), FindMatchingEpisode must search ALL of them, not just
+    /// the first entry — otherwise episodes that exist only in the second special
+    /// can never be matched.
+    /// </summary>
+    [Fact]
+    public void FindMatchingEpisode_MultipleSpecialsInS0_ShouldSearchAllEntries()
+    {
+        // Arrange
+        var mapping = new SeasonMapping
+        {
+            CrunchyrollSeriesId = "GRTEST",
+            Seasons = new List<SeasonMappingEntry>
+            {
+                new SeasonMappingEntry
+                {
+                    JellyfinSeasonNumber = 0,
+                    CrunchyrollSeasonId = "GR_SPECIAL1",
+                    CrunchyrollSeasonTitle = "Special 1",
+                    EpisodeOffset = 0
+                },
+                new SeasonMappingEntry
+                {
+                    JellyfinSeasonNumber = 0,
+                    CrunchyrollSeasonId = "GR_SPECIAL2",
+                    CrunchyrollSeasonTitle = "Special 2",
+                    EpisodeOffset = 0
+                }
+            }
+        };
+
+        var allEpisodes = new Dictionary<string, List<CrunchyrollEpisode>>
+        {
+            ["GR_SPECIAL1"] = new List<CrunchyrollEpisode>
+            {
+                new CrunchyrollEpisode { Id = "SP1_E1", EpisodeNumber = "1", EpisodeNumberInt = 1, SequenceNumber = 1, Title = "Special 1 Ep 1" }
+            },
+            ["GR_SPECIAL2"] = new List<CrunchyrollEpisode>
+            {
+                new CrunchyrollEpisode { Id = "SP2_E5", EpisodeNumber = "5", EpisodeNumberInt = 5, SequenceNumber = 5, Title = "Special 2 Ep 5" }
+            }
+        };
+
+        // Act — episode 5 exists ONLY in the second special
+        var result = _service.FindMatchingEpisode(0, 5, mapping, allEpisodes);
+
+        // Assert
+        result.Success.Should().BeTrue("episode 5 only exists in the second S0 entry, which must also be searched");
+        result.Episode!.Id.Should().Be("SP2_E5");
+    }
+
+    /// <summary>
     /// Helper method to create a list of episodes for testing.
     /// </summary>
     private static List<CrunchyrollEpisode> CreateEpisodeList(int startingEpisode, int count)

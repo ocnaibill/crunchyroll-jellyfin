@@ -23,7 +23,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        # The plugin targets net8.0; the test project targets net10.0.
+        # Both SDKs are required to build and test the solution.
+        dotnet-version: |
+          8.0.x
+          10.0.x
 
     - name: Restore dependencies
       run: dotnet restore
@@ -59,6 +63,11 @@ jobs:
           -p:AssemblyVersion="$FULL_VERSION" \
           -p:FileVersion="$FULL_VERSION" \
           -p:InformationalVersion="$VERSION"
+
+    - name: Test
+      # Run the test suite before publishing — previously the workflow built
+      # and released without ever executing the tests.
+      run: dotnet test Jellyfin.Plugin.Crunchyroll.Tests/Jellyfin.Plugin.Crunchyroll.Tests.csproj -c Release --no-restore
 
     - name: Publish
       run: |

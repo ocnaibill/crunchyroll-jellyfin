@@ -176,17 +176,18 @@ public class EpisodeMappingService
     private bool IsMovieOrSpecial(CrunchyrollSeason season, Dictionary<string, List<CrunchyrollEpisode>> allEpisodes)
     {
         var title = season.Title?.ToLowerInvariant() ?? string.Empty;
-        
-        // Check for movie/film keywords in title
+
+        // Check for movie/film keywords in title (whole words only)
         var movieKeywords = new[] { "movie", "film", "filme", "the movie", "劇場版", "gekijouban" };
-        if (movieKeywords.Any(keyword => title.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+        if (ContainsWholeWordKeyword(title, movieKeywords))
         {
             return true;
         }
 
-        // Check for special/OVA keywords in title
-        var specialKeywords = new[] { "ova", "oad", "special", "especial", "スペシャル" };
-        if (specialKeywords.Any(keyword => title.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+        // Check for special/OVA keywords in title (whole words only, so a season
+        // titled e.g. "Overload" is NOT matched by the substring "oad")
+        var specialKeywords = new[] { "ova", "ovas", "oad", "oads", "special", "specials", "especial", "especiais", "スペシャル" };
+        if (ContainsWholeWordKeyword(title, specialKeywords))
         {
             return true;
         }
@@ -204,7 +205,7 @@ public class EpisodeMappingService
             
             // Also check if the episode title contains movie keywords
             var epTitle = episode.Title?.ToLowerInvariant() ?? string.Empty;
-            if (movieKeywords.Any(keyword => epTitle.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            if (ContainsWholeWordKeyword(epTitle, movieKeywords))
             {
                 return true;
             }
@@ -237,6 +238,31 @@ public class EpisodeMappingService
                 {
                     return true;
                 }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether the text contains any of the keywords as a WHOLE word
+    /// (regex word boundaries), matching an optional trailing "s" so both
+    /// "OVA" and "OVAs" are caught. This avoids false positives where the
+    /// keyword appears inside a normal word (e.g. "Overload" contains "oad").
+    /// </summary>
+    private static bool ContainsWholeWordKeyword(string text, IEnumerable<string> keywords)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        foreach (var keyword in keywords)
+        {
+            var pattern = $@"\b{System.Text.RegularExpressions.Regex.Escape(keyword)}\b";
+            if (System.Text.RegularExpressions.Regex.IsMatch(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                return true;
             }
         }
 
@@ -312,11 +338,16 @@ public class EpisodeMappingService
             jellyfinSeasonNumber,
             jellyfinEpisodeNumber);
 
-        // Find the season mapping entry
-        var seasonEntry = seasonMapping.Seasons
-            .FirstOrDefault(s => s.JellyfinSeasonNumber == jellyfinSeasonNumber);
+        // Find ALL season mapping entries for this Jellyfin season.
+        // Several Crunchyroll seasons can legitimately map to the same Jellyfin
+        // season (e.g. multiple movie/special entries all mapped to S0), so we
+        // must try each entry instead of blindly using the first one.
+        var seasonEntries = seasonMapping.Seasons
+            .Where(s => s.JellyfinSeasonNumber == jellyfinSeasonNumber
+                && !string.IsNullOrEmpty(s.CrunchyrollSeasonId))
+            .ToList();
 
-        if (seasonEntry == null || string.IsNullOrEmpty(seasonEntry.CrunchyrollSeasonId))
+        if (seasonEntries.Count == 0)
         {
             _logger.LogWarning(
                 "No mapping found for Jellyfin season {Season}",
@@ -330,8 +361,43 @@ public class EpisodeMappingService
             };
         }
 
+        EpisodeMatchResult? lastFailure = null;
+
+        foreach (var seasonEntry in seasonEntries)
+        {
+            var result = TryMatchEpisodeInSeason(
+                seasonEntry,
+                jellyfinSeasonNumber,
+                jellyfinEpisodeNumber,
+                allEpisodes);
+
+            if (result.Success)
+            {
+                return result;
+            }
+
+            lastFailure = result;
+        }
+
+        return lastFailure ?? new EpisodeMatchResult
+        {
+            Success = false,
+            Confidence = 0,
+            Notes = $"No matching episode found for S{jellyfinSeasonNumber}E{jellyfinEpisodeNumber}"
+        };
+    }
+
+    /// <summary>
+    /// Attempts to find the matching Crunchyroll episode inside a single mapped season entry.
+    /// </summary>
+    private EpisodeMatchResult TryMatchEpisodeInSeason(
+        SeasonMappingEntry seasonEntry,
+        int jellyfinSeasonNumber,
+        int jellyfinEpisodeNumber,
+        Dictionary<string, List<CrunchyrollEpisode>> allEpisodes)
+    {
         // Get episodes for the matched season
-        var episodes = allEpisodes.GetValueOrDefault(seasonEntry.CrunchyrollSeasonId, new List<CrunchyrollEpisode>());
+        var episodes = allEpisodes.GetValueOrDefault(seasonEntry.CrunchyrollSeasonId!, new List<CrunchyrollEpisode>());
 
         if (episodes.Count == 0)
         {
@@ -339,7 +405,7 @@ public class EpisodeMappingService
             {
                 Success = false,
                 Confidence = 0,
-                Notes = "No episodes found in the mapped Crunchyroll season"
+                Notes = $"No episodes found in the mapped Crunchyroll season '{seasonEntry.CrunchyrollSeasonTitle}'"
             };
         }
 
