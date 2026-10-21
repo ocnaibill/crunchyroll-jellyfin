@@ -20,10 +20,13 @@ public class CrunchyrollApiClient : IDisposable
     private const string ApiBaseUrl = "https://www.crunchyroll.com/content/v2";
     
     /// <summary>
-    /// Basic authentication token (from crunchyroll-rs Android TV client).
-    /// This token is used for OAuth2 authentication with Crunchyroll.
+    /// Basic authentication token for Crunchyroll's public web client ("cr_web").
+    /// It is the base64 encoding of "cr_web:" — a public, secret-less client id that
+    /// the website itself uses. Only the anonymous client_id grant is supported by
+    /// this client; the password and refresh_token grants are rejected with
+    /// invalid_client, and the old third-party TV client ids have been revoked.
     /// </summary>
-    private const string BasicAuthToken = "bmR0aTZicXlqcm9wNXZnZjF0dnU6elpIcS00SEJJVDlDb2FMcnBPREJjRVRCTUNHai1QNlg=";
+    private const string BasicAuthToken = "Y3Jfd2ViOg==";
     
     // Simplified User-Agent (matches Python implementation - less fingerprint surface)
     private const string UserAgent = "Crunchyroll/3.50.2";
@@ -42,7 +45,6 @@ public class CrunchyrollApiClient : IDisposable
     private static bool _cfCookiesApplied;
     
     private static string? _accessToken;
-    private static string? _refreshToken;  // For token renewal without re-login
     private static DateTime _tokenExpiration = DateTime.MinValue;
     private static readonly SemaphoreSlim _authLock = new(1, 1);
     
@@ -217,8 +219,12 @@ public class CrunchyrollApiClient : IDisposable
 
         _lastAuthAttempt = DateTime.UtcNow;
 
-        bool isUserAuth = !string.IsNullOrEmpty(_username) && !string.IsNullOrEmpty(_password);
-        _logger.LogDebug("Authenticating with Crunchyroll ({Mode})", isUserAuth ? "User" : "Anonymous");
+        if (!string.IsNullOrEmpty(_username) && !string.IsNullOrEmpty(_password))
+        {
+            _logger.LogDebug("Configured credentials are ignored: the current Crunchyroll web client only issues anonymous tokens.");
+        }
+
+        _logger.LogDebug("Authenticating with Crunchyroll (Anonymous)");
 
         try
         {
@@ -245,61 +251,19 @@ public class CrunchyrollApiClient : IDisposable
             var deviceId = Guid.NewGuid().ToString();
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", BasicAuthToken);
             request.Headers.Add("ETP-Anonymous-ID", deviceId);
-            
-            // Determine authentication mode:
-            // 1. If we have a refresh token, try to use it first
-            // 2. If user credentials provided, use password grant
-            // 3. Otherwise, use anonymous client_id grant
-            bool useRefreshToken = !string.IsNullOrEmpty(_refreshToken);
-            
-            if (useRefreshToken)
+
+            request.Content = new FormUrlEncodedContent(new[]
             {
-                _logger.LogDebug("Attempting token refresh with existing refresh_token");
-                request.Content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("refresh_token", _refreshToken!),
-                    new KeyValuePair<string, string>("grant_type", "refresh_token"),
-                    new KeyValuePair<string, string>("scope", "offline_access"),
-                    new KeyValuePair<string, string>("device_id", deviceId)
-                });
-            }
-            else if (isUserAuth)
-            {
-                request.Content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("username", _username),
-                    new KeyValuePair<string, string>("password", _password),
-                    new KeyValuePair<string, string>("grant_type", "password"),
-                    new KeyValuePair<string, string>("scope", "offline_access"),
-                    new KeyValuePair<string, string>("device_id", deviceId),
-                    new KeyValuePair<string, string>("device_type", "com.crunchyroll.android.google")
-                });
-            }
-            else
-            {
-                request.Content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("grant_type", "client_id"),
-                    new KeyValuePair<string, string>("device_id", deviceId),
-                    new KeyValuePair<string, string>("device_type", "com.crunchyroll.android.google")
-                });
-            }
+                new KeyValuePair<string, string>("grant_type", "client_id"),
+                new KeyValuePair<string, string>("device_id", deviceId)
+            });
 
             var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                
-                // If refresh token failed, clear it and try again with full login
-                if (useRefreshToken && (response.StatusCode == System.Net.HttpStatusCode.BadRequest || 
-                                        response.StatusCode == System.Net.HttpStatusCode.Unauthorized))
-                {
-                    _logger.LogWarning("Refresh token expired or invalid, clearing and retrying with full login");
-                    _refreshToken = null;
-                    return await TryAuthenticateAsync(cancellationToken).ConfigureAwait(false);
-                }
-                
+
                 // Check if blocked by Cloudflare (403 Forbidden is the standard indicator)
                 // Also handle 429 TooManyRequests which Cloudflare uses for rate limiting bans (Error 1015)
                 if (response.StatusCode == System.Net.HttpStatusCode.Forbidden || 
@@ -331,30 +295,20 @@ public class CrunchyrollApiClient : IDisposable
                     return false;
                 }
 
-                // 401 with invalid_client/client_inactive means Crunchyroll rejected this
-                // plugin's embedded OAuth client credentials — NOT the user's password.
-                // The CDP-proxy auth call reuses the same client token and will also be
-                // rejected, but DOM extraction (reading the rendered page, no API client
-                // involved) does not depend on it, so we still switch to scraping mode
-                // instead of giving up outright.
+                // 401 with invalid_client/client_inactive means Crunchyroll rejected the
+                // web client id (cr_web) itself. That is not a username/password problem.
+                // Fall back to scraping mode so the rendered page can still be used.
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
                     (errorContent.Contains("invalid_client") || errorContent.Contains("client_inactive")))
                 {
                     _logger.LogError(
-                        "Crunchyroll rejected the plugin's OAuth client (status 401, invalid_client/client_inactive). " +
-                        "This is NOT a username/password problem: the embedded client credentials are no longer accepted by Crunchyroll " +
-                        "and must be updated in the plugin. Falling back to DOM scraping. Response: {Error}",
+                        "Crunchyroll rejected the web OAuth client (status 401, invalid_client/client_inactive). " +
+                        "The client id must be updated in the plugin. Falling back to scraping. Response: {Error}",
                         errorContent.Length > 300 ? errorContent[..300] : errorContent);
                     _useScrapingMode = true;
                     return false;
                 }
 
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && errorContent.Contains("invalid_grant"))
-                {
-                    _logger.LogError("Crunchyroll Login Failed: Invalid Credentials. Please check your Email and Password in the plugin configuration.");
-                    return false;
-                }
-                
                 _logger.LogError("Crunchyroll authentication failed with status {StatusCode}: {Error}", 
                     response.StatusCode, errorContent);
                 return false;
@@ -370,16 +324,10 @@ public class CrunchyrollApiClient : IDisposable
             }
 
             _accessToken = authResponse.AccessToken;
-            // Save refresh token if provided
-            if (!string.IsNullOrEmpty(authResponse.RefreshToken))
-            {
-                _refreshToken = authResponse.RefreshToken;
-            }
             // Set expiration with 60 seconds buffer
             _tokenExpiration = DateTime.UtcNow.AddSeconds(authResponse.ExpiresIn - 60);
 
-            _logger.LogInformation("Successfully authenticated with Crunchyroll as {Mode} (Country: {Country})", 
-                useRefreshToken ? "Refresh" : (isUserAuth ? "User" : "Anonymous"), authResponse.Country);
+            _logger.LogInformation("Successfully authenticated with Crunchyroll as Anonymous (Country: {Country})", authResponse.Country);
             
             return true;
         }
@@ -1007,19 +955,9 @@ public class CrunchyrollApiClient : IDisposable
                 ["Content-Type"] = "application/x-www-form-urlencoded"
             };
 
-            // Use password grant when credentials are available, otherwise anonymous
-            bool isUserAuth = !string.IsNullOrEmpty(_username) && !string.IsNullOrEmpty(_password);
-            string body;
-            if (isUserAuth)
-            {
-                _logger.LogDebug("[CDP Auth] Using password grant with configured credentials");
-                body = $"grant_type=password&username={Uri.EscapeDataString(_username)}&password={Uri.EscapeDataString(_password)}"
-                     + $"&device_id={deviceId}&device_type=com.crunchyroll.android.google&scope=offline_access";
-            }
-            else
-            {
-                body = $"grant_type=client_id&device_id={deviceId}";
-            }
+            // The web client only supports the anonymous client_id grant;
+            // password and refresh_token grants are rejected with invalid_client.
+            var body = $"grant_type=client_id&device_id={deviceId}";
 
             var json = await _flareSolverrClient.CdpFetchJsonAsync(
                 _dockerContainerName,
